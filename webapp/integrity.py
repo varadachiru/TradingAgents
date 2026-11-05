@@ -114,6 +114,17 @@ def integrity_review(
         1 for item in sources
         if item.get("tool") in NEWS_TOOLS and not item.get("published")
     )
+    # Do not conflate broad market headlines with ticker-specific coverage.
+    # get_news is the ticker-scoped vendor tool; its result is still only a
+    # candidate source, not independent proof the story concerns the company.
+    company_feed_sources = [
+        item for item in sources if item.get("tool") == "get_news"
+    ]
+    global_sources = [
+        item for item in sources if item.get("tool") == "get_global_news"
+    ]
+    dated_company_feed = sum(bool(item.get("published")) for item in company_feed_sources)
+    dated_global_context = sum(bool(item.get("published")) for item in global_sources)
     gaps = []
     tool_outcomes = evidence.get("tool_outcomes") or {}
     for group, names in (
@@ -132,8 +143,19 @@ def integrity_review(
     if "news" in analysts:
         if not news_calls:
             gaps.append("No company/global news tool calls were captured.")
+        if not tool_calls.get("get_news"):
+            gaps.append(
+                "Ticker-specific get_news was not called; global headlines "
+                "cannot substitute for company news coverage."
+            )
         if not dated_news_links:
             gaps.append("No dated news URLs were captured for the News analyst.")
+        if not dated_company_feed:
+            gaps.append(
+                "No dated ticker-scoped company-news URLs were captured. "
+                "Global/macro articles, even when dated, do not establish "
+                "company-specific support for an investment recommendation."
+            )
         if undated_news_links:
             gaps.append(
                 f"{undated_news_links} news link(s) lack a publication date, "
@@ -221,6 +243,12 @@ def integrity_review(
             "fundamental_tool_calls": financial_calls,
             "dated_news_links": dated_news_links,
             "undated_news_links": undated_news_links,
+            "company_news_tool_calls": int(tool_calls.get("get_news") or 0),
+            "global_news_tool_calls": int(tool_calls.get("get_global_news") or 0),
+            "company_feed_links": len(company_feed_sources),
+            "dated_company_feed_links": dated_company_feed,
+            "global_context_links": len(global_sources),
+            "dated_global_context_links": dated_global_context,
             "future_dated_links_excluded": evidence.get("future_dated_excluded", 0),
             "tool_outcomes": {
                 name: dict(counts) for name, counts in tool_outcomes.items()
