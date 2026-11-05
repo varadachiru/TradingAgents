@@ -331,7 +331,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(size))
             snapshot = self.server.manager.start(payload)
             return self._json(202, {"job": snapshot})
-        except (ValueError, json.JSONDecodeError) as exc:
+        except ValueError as exc:
             message = str(exc) if isinstance(exc, RequestError) else "Invalid request."
             return self._json(409 if "already running" in message else 400, {"error": message})
 
