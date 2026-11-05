@@ -11,6 +11,7 @@ import json
 import os
 import re
 import threading
+from contextlib import suppress
 from datetime import UTC, date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -115,10 +116,9 @@ def recent_reports(limit: int = 12) -> list[dict]:
                             ("quality_summary.json", "quality")):
             file = folder / name
             if file.is_file() and file.stat().st_size <= 65_536:
-                try:
+                # Old/partial reports remain readable.
+                with suppress(OSError, ValueError):
                     item[field] = json.loads(file.read_text(encoding="utf-8"))
-                except (OSError, ValueError):
-                    pass  # Old/partial reports remain readable.
         found.append(item)
     return sorted(found, key=lambda r: r["created_at"], reverse=True)[:limit]
 
