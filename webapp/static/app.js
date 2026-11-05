@@ -394,13 +394,67 @@ function appendInlineReportText(parent, text) {
     }
   }
 }
+function tableCells(line) {
+  let text = line.trim();
+  if (text.startsWith("|")) text = text.slice(1);
+  if (text.endsWith("|")) text = text.slice(0, -1);
+  return text.split("|").map((cell) => cell.trim());
+}
+function isTableDivider(line, columns) {
+  if (!line || !line.includes("|")) return false;
+  const cells = tableCells(line);
+  return cells.length === columns &&
+    cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
 function renderReportText(container, rawText) {
   container.replaceChildren();
   let paragraph = null;
-  for (const line of rawText.split(/\r?\n/)) {
+  const lines = rawText.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     if (!line.trim()) {
       paragraph = null;
       continue;
+    }
+    // Safe Markdown tables: generated values are text nodes, never HTML.
+    if (line.includes("|")) {
+      const headers = tableCells(line);
+      if (headers.length > 1 && headers.length <= 12 &&
+          isTableDivider(lines[i + 1], headers.length)) {
+        const wrap = document.createElement("div");
+        wrap.className = "report-table-wrap";
+        const table = document.createElement("table");
+        table.className = "report-table";
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        for (const value of headers) {
+          const th = document.createElement("th");
+          appendInlineReportText(th, value);
+          headRow.append(th);
+        }
+        thead.append(headRow);
+        table.append(thead);
+        const tbody = document.createElement("tbody");
+        i += 2; // Header plus divider consumed.
+        while (i < lines.length && lines[i].includes("|")) {
+          const cells = tableCells(lines[i]);
+          if (cells.length !== headers.length) break;
+          const row = document.createElement("tr");
+          for (const value of cells) {
+            const td = document.createElement("td");
+            appendInlineReportText(td, value);
+            row.append(td);
+          }
+          tbody.append(row);
+          i += 1;
+        }
+        table.append(tbody);
+        wrap.append(table);
+        container.append(wrap);
+        paragraph = null;
+        i -= 1;
+        continue;
+      }
     }
     const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
