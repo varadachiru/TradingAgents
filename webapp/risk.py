@@ -43,13 +43,14 @@ def proposal_risk(state: dict, rating: str) -> dict:
     warnings = []
     risk_pct = upside_pct = multiple = None
 
-    if not direction:
-        warnings.append("No directional final rating; risk/reward is not applicable.")
-    elif trader_action and (
+    conflict = bool(trader_action and direction and (
         (direction == "long" and trader_action.lower() == "sell")
         or (direction == "short" and trader_action.lower() == "buy")
-    ):
-        warnings.append("Trader action conflicts with the final portfolio rating.")
+    ))
+    if not direction:
+        warnings.append("No directional final rating; risk/reward is not applicable.")
+    elif conflict:
+        warnings.append("Trader action conflicts with the final portfolio rating; risk/reward is withheld.")
     if entry is None:
         warnings.append("No valid numeric entry price provided by the Trader.")
     if stop is None:
@@ -57,7 +58,7 @@ def proposal_risk(state: dict, rating: str) -> dict:
     if target is None:
         warnings.append("No valid numeric price target provided by the Portfolio Manager.")
 
-    if direction and entry and stop:
+    if direction and not conflict and entry and stop:
         risk = (entry - stop) if direction == "long" else (stop - entry)
         if risk <= 0:
             warnings.append("Stop-loss is on the wrong side of entry for this direction.")
