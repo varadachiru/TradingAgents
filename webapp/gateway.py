@@ -11,10 +11,18 @@ import os
 import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,119}$")
 DEFAULT_URL = "http://127.0.0.1:3001/v1"
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """Never forward gateway bearer credentials after a URL redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise HTTPError(req.full_url, code, "Gateway redirects are forbidden.", headers, fp)
+
 
 
 def gateway_url() -> str:
@@ -96,7 +104,7 @@ def test_gateway_connection() -> dict:
         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
     )
     try:
-        with urlopen(request, timeout=7) as response:
+        with build_opener(_NoRedirect).open(request, timeout=7) as response:
             if response.status != 200:
                 raise ValueError(f"Gateway model discovery returned HTTP {response.status}.")
             body = json.loads(response.read(262_144))
