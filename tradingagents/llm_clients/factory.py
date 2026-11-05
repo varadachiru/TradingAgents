@@ -100,6 +100,10 @@ def build_llm_kwargs(config: dict) -> dict[str, Any]:
         thinking_level = config.get("google_thinking_level")
         if thinking_level:
             kwargs["thinking_level"] = thinking_level
+        # Optional per-process pacing shared by the Gemini quick/deep tiers.
+        rpm = config.get("google_requests_per_minute")
+        if rpm is not None:
+            kwargs["requests_per_minute"] = rpm
 
     elif provider in REASONING_EFFORT_PROVIDERS:
         reasoning_effort = config.get("openai_reasoning_effort")
