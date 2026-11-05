@@ -43,9 +43,16 @@ def audit_appendix(evidence: dict, risk: dict, integrity: dict | None = None) ->
             stamp = item.get("published") or "Publication date unavailable"
             label = _escape(item.get("title") or "Source")
             publisher = _escape(item.get("publisher") or "Unspecified")
+            scope = (
+                "ticker-scoped company-feed candidate (relevance unverified)"
+                if item.get("tool") == "get_news"
+                else "global/macro context (not company-specific)"
+                if item.get("tool") == "get_global_news"
+                else "other data source"
+            )
             lines.append(
                 f"- [{label}]({item['url']}) — {publisher}; published: {stamp}; "
-                f"retrieved via {_escape(item.get('tool'))}"
+                f"{scope}; retrieved via {_escape(item.get('tool'))}"
             )
     lines.extend(["", "### Trade proposal and risk arithmetic", ""])
     direction = risk.get("direction") or "N/A"
@@ -78,6 +85,8 @@ def audit_appendix(evidence: dict, risk: dict, integrity: dict | None = None) ->
             "",
             f"- Review status: **{_escape(integrity.get('status', 'unknown'))}**",
             f"- Dated news links captured: {integrity.get('source_coverage', {}).get('dated_news_links', 0)}",
+            f"- Dated ticker-scoped company-feed candidates: {integrity.get('source_coverage', {}).get('dated_company_feed_links', 0)}",
+            f"- Global/macro-context links (not company evidence): {integrity.get('source_coverage', {}).get('global_context_links', 0)}",
             f"- News tool calls observed: {integrity.get('source_coverage', {}).get('news_tool_calls', 0)}",
             f"- Financial tool calls observed: {integrity.get('source_coverage', {}).get('fundamental_tool_calls', 0)}",
         ])
