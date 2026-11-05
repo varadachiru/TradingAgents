@@ -1,7 +1,7 @@
 """Local-only TradingAgents research dashboard.
 
 Run with: python -m webapp.server
-The browser never receives Gemini credentials. Keep the forwarded Codespaces port private.
+The browser never receives AI gateway credentials. Keep the forwarded Codespaces port private.
 """
 from __future__ import annotations
 
@@ -21,10 +21,18 @@ from tradingagents.default_config import DEFAULT_CONFIG
 
 from .audit_report import audit_appendix
 from .evidence import EvidenceCollector
+from .gateway import (
+    GatewayConfigError,
+    configured_models,
+    gateway_is_configured,
+    gateway_url,
+    public_provider_status,
+    test_gateway_connection,
+)
 from .integrity import integrity_review
 from .quality import report_quality
 from .risk import proposal_risk
-from .usage import GeminiUsageTracker
+from .usage import GatewayUsageTracker, GeminiUsageTracker
 
 STATIC_DIR = Path(__file__).parent / "static"
 ANALYSTS = ("market", "social", "news", "fundamentals")
@@ -69,16 +77,30 @@ def validate_run(payload: object) -> dict:
         raise RequestError("Unknown analyst selected.")
     if len(set(selected)) != len(selected):
         raise RequestError("Select each analyst only once.")
-    quick = payload.get("quick_model", MODELS[0])
-    deep = payload.get("deep_model", MODELS[0])
-    if quick not in MODELS or deep not in MODELS:
-        raise RequestError("Choose one of the supported Gemini models.")
+    provider = payload.get("provider", "google")
+    if provider not in {"google", "freellmapi"}:
+        raise RequestError("Choose a supported AI provider.")
+    if provider == "google":
+        allowed_quick = allowed_deep = MODELS
+        default_quick = default_deep = MODELS[0]
+    else:
+        try:
+            default_quick, default_deep = configured_models()
+        except GatewayConfigError as exc:
+            raise RequestError(str(exc)) from exc
+        allowed_quick = (default_quick,)
+        allowed_deep = (default_deep,)
+    quick = payload.get("quick_model", default_quick)
+    deep = payload.get("deep_model", default_deep)
+    if quick not in allowed_quick or deep not in allowed_deep:
+        raise RequestError("Choose the server-approved models for this provider.")
     rounds = payload.get("rounds", 1)
     if type(rounds) is not int or rounds not in (1, 2):
         raise RequestError("Research rounds must be 1 or 2.")
     return {
         "ticker": ticker,
         "date": raw_date,
+        "provider": provider,
         "analysts": [a for a in ANALYSTS if a in selected],
         "quick_model": quick,
         "deep_model": deep,
@@ -136,7 +158,7 @@ class ResearchManager:
     def __init__(self):
         self.lock = threading.Lock()
         self.current: dict | None = None
-        self.usage_tracker: GeminiUsageTracker | None = None
+        self.usage_tracker: GeminiUsageTracker | GatewayUsageTracker | None = None
         self.evidence_collector: EvidenceCollector | None = None
 
     def snapshot(self) -> dict:
@@ -179,9 +201,15 @@ class ResearchManager:
 
     def start(self, payload: object) -> dict:
         options = validate_run(payload)
-        if not os.environ.get("GOOGLE_API_KEY"):
+        if options["provider"] == "google":
+            if not os.environ.get("GOOGLE_API_KEY"):
+                raise RequestError(
+                    "GOOGLE_API_KEY is missing. Add it as a Codespaces secret and restart the Codespace."
+                )
+        elif not gateway_is_configured():
             raise RequestError(
-                "GOOGLE_API_KEY is missing. Add it as a Codespaces secret and restart the Codespace."
+                "FreeLLMAPI is not configured. Add FREELLMAPI_API_KEY as a "
+                "Codespaces secret and set a valid local gateway URL and model profiles."
             )
         with self.lock:
             if self.current and self.current["status"] == "running":
@@ -220,20 +248,21 @@ class ResearchManager:
             from tradingagents.graph.trading_graph import TradingAgentsGraph
 
             config = copy.deepcopy(DEFAULT_CONFIG)
+            is_gateway = options["provider"] == "freellmapi"
             config.update({
-                "llm_provider": "google",
-                "backend_url": None,
+                "llm_provider": "freellmapi" if is_gateway else "google",
+                "backend_url": gateway_url() if is_gateway else None,
                 "quick_think_provider": None,
                 "deep_think_provider": None,
                 "quick_think_llm": options["quick_model"],
                 "deep_think_llm": options["deep_model"],
-                "google_thinking_level": "low",
-                # One API call about every 10s across quick and deep tiers.
-                # Conservative starting point for accounts with low RPM quotas.
-                "google_requests_per_minute": 6,
+                # Apply Gemini-specific pacing only for direct Gemini.
+                "google_thinking_level": None if is_gateway else "low",
+                "google_requests_per_minute": None if is_gateway else 6,
                 "max_debate_rounds": options["rounds"],
                 "max_risk_discuss_rounds": options["rounds"],
-                "llm_max_retries": 2,
+                # FreeLLMAPI has its own retries and provider-fallback logic.
+                "llm_max_retries": 1 if is_gateway else 2,
                 "output_language": "English",
                 "checkpoint_enabled": True,
             })
@@ -241,7 +270,10 @@ class ResearchManager:
                 options["quick_model"]
                 if options["quick_model"] == options["deep_model"] else None
             )
-            tracker = GeminiUsageTracker(default_model=default_model)
+            tracker = (
+                GatewayUsageTracker(default_model=default_model)
+                if is_gateway else GeminiUsageTracker(default_model=default_model)
+            )
             evidence = EvidenceCollector(options["date"], analysts=options["analysts"])
             with self.lock:
                 self.usage_tracker = tracker
@@ -324,9 +356,10 @@ class ResearchManager:
             self._stage("Analysis complete")
         except Exception as exc:
             error = str(exc)
-            key = os.environ.get("GOOGLE_API_KEY")
-            if key:
-                error = error.replace(key, "[redacted]")
+            for env_name in ("GOOGLE_API_KEY", "FREELLMAPI_API_KEY"):
+                key = os.environ.get(env_name)
+                if key:
+                    error = error.replace(key, "[redacted]")
             self._update(
                 status="failed",
                 phase="Analysis failed",
@@ -367,9 +400,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return self._file(STATIC_DIR / "app.js", "text/javascript; charset=utf-8")
         if path == "/api/status":
             return self._json(200, {
+                # Keep the legacy bool for old clients.
                 "configured": bool(os.environ.get("GOOGLE_API_KEY")),
+                "providers": public_provider_status(),
                 "job": self.server.manager.snapshot(),
             })
+        if path == "/api/gateway/check":
+            if self.headers.get("X-Requested-With") != "TradingAgentsWeb":
+                return self._json(403, {"error": "Browser request header is missing."})
+            try:
+                return self._json(200, test_gateway_connection())
+            except GatewayConfigError as exc:
+                return self._json(503, {"error": str(exc)})
         if path == "/api/reports":
             return self._json(200, recent_reports())
         if path.startswith("/api/reports/"):
