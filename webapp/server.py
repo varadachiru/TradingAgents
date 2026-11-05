@@ -78,7 +78,7 @@ def validate_run(payload: object) -> dict:
     if len(set(selected)) != len(selected):
         raise RequestError("Select each analyst only once.")
     provider = payload.get("provider", "google")
-    if provider not in {"google", "freellmapi"}:
+    if not isinstance(provider, str) or provider not in {"google", "freellmapi"}:
         raise RequestError("Choose a supported AI provider.")
     if provider == "google":
         allowed_quick = allowed_deep = MODELS
