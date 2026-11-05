@@ -1,6 +1,8 @@
 import re
+from functools import lru_cache
 from typing import Any
 
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from .base_client import BaseLLMClient, normalize_content
@@ -31,6 +33,20 @@ class NormalizedChatGoogleGenerativeAI(ChatGoogleGenerativeAI):
         return normalize_content(super().invoke(input, config, **kwargs))
 
 
+# Optional single-process request pacing for Gemini. All model tiers must use
+# the same limiter to keep concurrently running analysts within the same budget.
+# API-side retries and other processes may still count toward the provider quota.
+@lru_cache(maxsize=16)
+def _shared_rate_limiter(requests_per_minute: int) -> InMemoryRateLimiter:
+    if not 1 <= requests_per_minute <= 120:
+        raise ValueError("requests_per_minute must be between 1 and 120")
+    return InMemoryRateLimiter(
+        requests_per_second=requests_per_minute / 60,
+        check_every_n_seconds=0.25,
+        max_bucket_size=1,
+    )
+
+
 # The read timeout the OpenAI and Anthropic SDKs use by default.
 REQUEST_TIMEOUT_SECONDS = 600
 
@@ -56,6 +72,12 @@ class GoogleClient(BaseLLMClient):
         # Without a timeout a stalled Gemini call waits forever; the OpenAI and
         # Anthropic SDKs give up after the same 600 seconds (#1417).
         llm_kwargs.setdefault("timeout", REQUEST_TIMEOUT_SECONDS)
+
+        rpm = self.kwargs.get("requests_per_minute")
+        if rpm is not None:
+            if type(rpm) is not int:
+                raise ValueError("requests_per_minute must be an integer")
+            llm_kwargs["rate_limiter"] = _shared_rate_limiter(rpm)
 
         # Unified api_key maps to provider-specific google_api_key
         google_api_key = self.kwargs.get("api_key") or self.kwargs.get("google_api_key")
