@@ -208,3 +208,46 @@ def test_stale_snapshot_is_explicitly_flagged():
     snapshot = collector.snapshot()
     assert snapshot["market_snapshot"]["age_days"] == 14
     assert any("14 calendar days" in warning for warning in snapshot["warnings"])
+
+
+
+@pytest.mark.unit
+def test_technical_only_uses_market_snapshot_without_source_url_warning():
+    collector = EvidenceCollector("2026-11-05", analysts=["market"])
+    collector.on_tool_start({"name": "get_verified_market_snapshot"}, "", run_id="market")
+    collector.on_tool_end(
+        "- Latest trading row used: 2026-11-05\n| Close | 1,313.40 |",
+        run_id="market",
+    )
+    result = collector.snapshot()
+    assert result["source_count"] == 0
+    assert result["article_links_expected"] is False
+    assert result["market_snapshot"]["close"] == 1313.40
+    assert not any("No article or document URLs" in w for w in result["warnings"])
+
+
+@pytest.mark.unit
+def test_news_run_without_article_links_warns_about_missing_sources():
+    collector = EvidenceCollector("2026-11-05", analysts=["market", "news"])
+    collector.on_tool_start({"name": "get_news"}, "", run_id="news")
+    collector.on_tool_end("No news found for RELIANCE.NS", run_id="news")
+    result = collector.snapshot()
+    assert result["source_count"] == 0
+    assert result["article_links_expected"] is True
+    assert any("No article or document URLs" in w for w in result["warnings"])
+
+
+@pytest.mark.unit
+def test_hold_rating_is_an_explicit_no_trade_and_not_missing_rating():
+    result = proposal_risk(
+        {
+            "trader_investment_plan": "**Action**: Hold\n**Entry Price**: 1324\n**Stop Loss**: 1260",
+            "final_trade_decision": "**Rating**: Hold\n**Price Target**: not provided",
+        },
+        "Hold",
+    )
+    assert result["direction"] is None
+    assert result["risk_pct"] is None
+    assert result["reward_to_risk"] is None
+    assert any("Hold" in w for w in result["warnings"])
+    assert not any("No directional final rating" in w for w in result["warnings"])
