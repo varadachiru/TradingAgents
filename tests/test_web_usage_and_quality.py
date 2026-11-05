@@ -139,7 +139,7 @@ def test_full_reliance_execution_saves_usage_and_quality_without_api_calls(
             collector = kwargs["config"]["callbacks"][0]
             collector.on_tool_start({"name": "get_news"}, "", run_id="mock-news")
             collector.on_tool_end(
-                "### Test article (source: Example)\\nPublished: 2026-11-03T08:00:00Z\\n"
+                "### Test article (source: Example)\nPublished: 2026-11-03T08:00:00Z\n"
                 "Link: https://example.com/test-story",
                 run_id="mock-news",
             )
