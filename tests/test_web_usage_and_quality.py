@@ -190,6 +190,11 @@ def test_full_reliance_execution_saves_usage_and_quality_without_api_calls(
     assert (report_dir / "evidence_summary.json").is_file()
     assert json.loads((report_dir / "evidence_summary.json").read_text())["source_count"] == 1
     assert (report_dir / "risk_summary.json").is_file()
+    assert (report_dir / "integrity_summary.json").is_file()
+    integrity = json.loads((report_dir / "integrity_summary.json").read_text())
+    assert integrity["selected_analysts"] == list(server.ANALYSTS)
+    assert integrity["source_coverage"]["dated_news_links"] == 1
+    assert "integrity" in manager.snapshot()
     assert (report_dir / "audit_appendix.md").is_file()
     assert "Evidence and Trade-Risk Audit" in (report_dir / "complete_report.md").read_text()
     assert json.loads((report_dir / "quality_summary.json").read_text())["sections_requested"] == 4
@@ -199,3 +204,4 @@ def test_full_reliance_execution_saves_usage_and_quality_without_api_calls(
     assert recent[0]["ticker"] == "RELIANCE.NS"
     assert recent[0]["quality"]["sections_requested"] == 4
     assert recent[0]["usage"]["calls"] == 0
+    assert recent[0]["integrity"]["source_coverage"]["news_tool_calls"] == 1

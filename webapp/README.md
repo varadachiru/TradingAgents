@@ -166,3 +166,94 @@ A **new** run is needed to test collection of tool outputs.
 
 Trade-risk calculations do not include broker execution, live prices,
 transaction costs, slippage, gaps or tax.
+
+
+## PR #4: Research integrity and source coverage diagnostics
+
+New analyses produce **integrity_summary.json** alongside evidence_summary.json,
+risk_summary.json and quality_summary.json. The browser shows a **Source
+traceability and consistency** panel; saved reports display the same metadata.
+The deterministic findings are appended to the Markdown report's audit appendix.
+
+This audit does not send data to another model, call an external verifier, or
+fetch extra market-data records. It compares data already collected in the run:
+
+- **News citations:** Compare URLs explicitly written by the News or other
+  selected analysts with actual data-tool-returned links. URLs mentioned only
+  by an LLM are **not** treated as verified. Even a URL that matches a source
+  does not prove the article supports the corresponding claim.
+- **Point-in-time evidence:** Show dated versus undated news URLs, news-tool
+  calls, and any future-dated URLs already excluded by the evidence collector.
+  For fundamentals, call out missing dated filing/document URLs. Fiscal
+  reporting periods do NOT substitute for document publication dates.
+- **Vendor failures:** Count explicit unavailable, no-result, empty and errored
+  data-tool responses. Missing provider results are **data gaps**, not
+  negative stock signals. A successfully returned response is not
+  necessarily accurate or comprehensive.
+- **Market consistency:** Compare explicit "current/latest price" statements
+  in selected analyst reports against the dated close returned by the
+  existing get_verified_market_snapshot tool. Values differing by more than
+  max(1.0 quote unit, 0.5%) are flagged for **manual review**, not
+  automatically called false. Other historical values, SMA/support levels
+  and price targets are intentionally excluded.
+- **Decision trail:** Show the Research Manager recommendation, Trader
+  action and Portfolio Manager final rating when explicitly provided.
+  Disagreements can be reasonable and are not treated as errors by default.
+- **Risk/return completeness:** A directional Buy/Overweight/Sell/Underweight
+  recommendation without an explicit numeric price target is flagged. A
+  Hold recommendation can reasonably omit a target and is not penalized.
+
+These checks do **not** independently authenticate SEC/NSE/BSE filings, verify
+Yahoo prices against exchanges, compute valuation-based target prices or
+determine the accuracy of all financial figures. For Indian tickers such as
+RELIANCE.NS, independently review the original dated stock-exchange filings.
+
+Existing reports remain readable; reports generated before PR #4 do not
+retroactively have integrity metadata. **A new run is required** to capture
+per-tool coverage and compute this summary.
+
+### Validation in private Codespaces
+
+After switching to the PR #4 feature branch and installing dev dependencies:
+
+    ruff check webapp tests/test_web_dashboard.py tests/test_web_usage_and_quality.py tests/test_web_evidence_risk.py tests/test_web_integrity.py
+    pytest -q tests/test_web_dashboard.py tests/test_web_usage_and_quality.py tests/test_web_evidence_risk.py tests/test_web_integrity.py
+    python3 -m webapp.server
+
+Open port 8765 with visibility **Private**. Start by browsing old reports.
+For a paid live smoke test, use RELIANCE.NS, an analysis date with source
+coverage, 1 round and the **News analyst** to exercise news URL matching;
+use Gemini 3.1 Flash-Lite for both tiers. Avoid repeated runs if an API quota
+is exceeded. Manual checks should confirm that links have real dates and the
+model's actual citations match or are flagged as untraced.
+
+All offline tests use simulated outputs and consume **no Gemini credits**.
+
+
+### Live PR #4 News test: source relevance correction
+
+The November 5, 2026 Quick News-only RELIANCE.NS smoke test completed with
+**68 passing offline tests,** 13 dated article links, 10 Gemini model calls,
+and a **$0.022574** paid-tier reference estimate. But many captured links were
+unrelated global/US stories, not direct company coverage.
+
+A PR #4 follow-up now distinguishes **ticker-scoped company-feed candidates**
+(`get_news`) from **global/macro context** (`get_global_news`). Broad
+global articles do **not** satisfy the dated company-news coverage check,
+even if they are properly dated. A ticker-feed result is still only a
+candidate: the tool origin does not verify that the article actually concerns
+the stock or supports a claim.
+
+The Source Audit orders ticker-feed candidates before global headlines and
+explicitly labels their origin. The Research Integrity panel reports separate
+counts and warns when there are **no dated ticker-feed URLs**, or when
+`get_news` was never called. The News analyst is instructed to search the
+ticker first, treat global articles as secondary macro context, and disclose
+insufficient company coverage rather than making a confident company-specific
+news claim on unrelated articles.
+
+When Technical analysis is not selected, no historical OHLCV snapshot is
+expected. The absence of such a snapshot no longer generates a warning for
+News-only runs. The latest changes add more no-network regression tests;
+rerun Ruff and pytest before merging the PR. You do not need another paid
+Gemini test just to verify the source-origin labels and warnings.

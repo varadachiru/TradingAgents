@@ -87,6 +87,14 @@ def extract_sources(text: str, tool: str, as_of_date: str) -> list[dict]:
                     "published": timestamp,
                     "date_status": date_status,
                     "tool": tool,
+                    # Tool origin is the only defensible classification:
+                    # never claim a global article is relevant to the ticker
+                    # merely because it appeared in the same research run.
+                    "scope": (
+                        "company_feed" if tool == "get_news"
+                        else "global_context" if tool == "get_global_news"
+                        else "other_source"
+                    ),
                 })
     return sources
 
@@ -124,6 +132,7 @@ class EvidenceCollector(BaseCallbackHandler):
         self._lock = threading.Lock()
         self._pending: dict[str, str] = {}
         self._tool_counts: dict[str, int] = {}
+        self._tool_outcomes: dict[str, dict[str, int]] = {}
         self._sources: dict[str, dict] = {}
         self._snapshot: dict | None = None
         self._future_sources = 0
@@ -138,7 +147,11 @@ class EvidenceCollector(BaseCallbackHandler):
     def on_tool_error(self, error: BaseException, *, run_id: Any, **kwargs: Any) -> None:
         del error, kwargs
         with self._lock:
-            self._pending.pop(str(run_id), None)
+            name = self._pending.pop(str(run_id), None)
+            if name:
+                self._tool_counts[name] = self._tool_counts.get(name, 0) + 1
+                outcomes = self._tool_outcomes.setdefault(name, {})
+                outcomes["error"] = outcomes.get("error", 0) + 1
 
     def on_tool_end(self, output: Any, *, run_id: Any, **kwargs: Any) -> None:
         del kwargs
@@ -151,13 +164,34 @@ class EvidenceCollector(BaseCallbackHandler):
             return
         sources = extract_sources(content, name, self.as_of_date) if name in SOURCE_TOOLS else []
         snapshot = parse_verified_snapshot(content, self.as_of_date) if name == MARKET_TOOL else None
+        lower = content.lower()
+        # Classify only explicit placeholders or empty/no-result responses.
+        # 'returned' does not establish source reliability or correctness.
+        if not content.strip():
+            outcome = "empty"
+        elif (
+            re.search(r"<[^>]{0,220}unavailable[^>]{0,220}>", lower)
+            or "vendor unavailable" in lower
+        ):
+            outcome = "unavailable"
+        elif re.search(r"\bno (?:news|data|articles|results) found\b", lower):
+            outcome = "no_results"
+        else:
+            outcome = "returned"
         with self._lock:
             self._tool_counts[name] = self._tool_counts.get(name, 0) + 1
+            tool_outcomes = self._tool_outcomes.setdefault(name, {})
+            tool_outcomes[outcome] = tool_outcomes.get(outcome, 0) + 1
             for item in sources:
                 if item["date_status"] == "after_analysis_date":
                     self._future_sources += 1
                     continue
-                self._sources.setdefault(item["url"], item)
+                previous = self._sources.get(item["url"])
+                if previous is None or (
+                    item["scope"] == "company_feed"
+                    and previous.get("scope") != "company_feed"
+                ):
+                    self._sources[item["url"]] = item
             if snapshot and (self._snapshot is None or snapshot["date"] > self._snapshot["date"]):
                 self._snapshot = snapshot
 
@@ -166,6 +200,7 @@ class EvidenceCollector(BaseCallbackHandler):
             sources = sorted(self._sources.values(), key=lambda s: (s["published"] or "", s["title"]), reverse=True)
             prices = dict(self._snapshot) if self._snapshot else None
             calls = dict(self._tool_counts)
+            outcomes = {key: dict(value) for key, value in self._tool_outcomes.items()}
             future_count = self._future_sources
         dated = sum(s["published"] is not None for s in sources)
         warnings = []
@@ -186,7 +221,8 @@ class EvidenceCollector(BaseCallbackHandler):
         if future_count:
             warnings.append(f"{future_count} source link(s) dated after the analysis date were excluded.")
         if prices is None:
-            warnings.append("No verified historical OHLCV snapshot was captured; quoted prices have not been checked against market tool output.")
+            if self.analysts is None or "market" in self.analysts:
+                warnings.append("No verified historical OHLCV snapshot was captured; quoted prices have not been checked against market tool output.")
         else:
             age = (date.fromisoformat(self.as_of_date) - date.fromisoformat(prices["date"])).days
             prices["age_days"] = age
@@ -195,11 +231,13 @@ class EvidenceCollector(BaseCallbackHandler):
         return {
             "analysis_date": self.as_of_date,
             "tool_calls": calls,
+            "tool_outcomes": outcomes,
             "sources": sources[:60],
             "source_count": len(sources),
             "dated_source_count": dated,
             "article_links_expected": links_expected,
             "source_note": source_note,
+            "market_snapshot_expected": self.analysts is None or "market" in self.analysts,
             "future_dated_excluded": future_count,
             "market_snapshot": prices,
             "warnings": warnings,

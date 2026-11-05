@@ -23,6 +23,7 @@ const state = {
   historicalQuality: null,
   historicalEvidence: null,
   historicalRisk: null,
+  historicalIntegrity: null,
 };
 
 function formatDate(value) {
@@ -149,17 +150,31 @@ function renderAudit() {
   const evidencePanel = $("auditPanel");
   evidencePanel.hidden = !evidence;
   if (evidence) {
-    $("auditSourceCount").textContent = (evidence.dated_source_count || 0) + " dated / " +
-      (evidence.source_count || 0) + " tool-returned links";
+    const sourceList = evidence.sources || [];
+    const companyLinks = sourceList.filter((item) => item.tool === "get_news").length;
+    const globalLinks = sourceList.filter((item) => item.tool === "get_global_news").length;
+    $("auditSourceCount").textContent = companyLinks + " company-feed candidates · " +
+      globalLinks + " global-context links · " +
+      (evidence.dated_source_count || 0) + " dated";
     const snapshot = evidence.market_snapshot;
     $("auditMarket").textContent = snapshot
       ? "Verified tool snapshot: " + snapshot.date + " close " +
         Number(snapshot.close).toLocaleString(undefined, {minimumFractionDigits: 2}) +
         " (Yahoo Finance historical OHLCV; not exchange-confirmed)"
-      : "Verified market snapshot not captured — quoted prices are not checked.";
+      : (evidence.market_snapshot_expected === false ||
+          (state.selectedReport === "job"
+            ? !((state.job || {}).analysts || []).includes("market")
+            : !((state.historicalQuality || {}).analysts || [])
+                .some((item) => item.analyst === "market"))
+        ? "A market-price snapshot is not expected when Technical analysis is not selected."
+        : "Market-price snapshot not captured — quoted prices are not independently checked.");
     const rows = $("auditSources");
     rows.replaceChildren();
-    for (const entry of (evidence.sources || []).slice(0, 12)) {
+    // Ticker-scoped tool results first; global headlines are context, not
+    // company evidence. Neither classification verifies article relevance.
+    const sortedSources = [...sourceList].sort((a, b) =>
+      Number(b.tool === "get_news") - Number(a.tool === "get_news"));
+    for (const entry of sortedSources.slice(0, 12)) {
       // Never render model/tool HTML. Permit only external http(s) sources.
       const url = String(entry.url || "");
       let valid = false;
@@ -177,10 +192,14 @@ function renderAudit() {
       anchor.href = url;
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
+      const origin = entry.tool === "get_news"
+        ? "Ticker-scoped feed (relevance unverified)"
+        : entry.tool === "get_global_news"
+          ? "Global context · not company-specific"
+          : "Other data source";
       const subtitle = _make("small",
-        (entry.publisher || "Unspecified") + " · " +
-        (entry.published || "publication date unavailable") + " · " +
-        (entry.tool || "tool"));
+        origin + " · " + (entry.publisher || "Unspecified") + " · " +
+        (entry.published || "publication date unavailable"));
       line.append(anchor, subtitle);
       rows.append(line);
     }
@@ -191,7 +210,10 @@ function renderAudit() {
     }
     const warnings = (evidence.warnings || []).filter((warning) =>
       !technicalOnly || !warning.startsWith("No article or document URLs were captured"));
-    $("auditWarnings").textContent = warnings.join(" ");
+    const filteredWarnings = warnings.filter((warning) =>
+      evidence.market_snapshot_expected !== false ||
+      !warning.startsWith("No verified historical OHLCV"));
+    $("auditWarnings").textContent = filteredWarnings.join(" ");
   }
   const riskPanel = $("riskPanel");
   riskPanel.hidden = !risk;
@@ -220,6 +242,96 @@ function renderAudit() {
 function parsedHostname(url) {
   try { return new URL(url).hostname; }
   catch (_) { return "Source"; }
+}
+
+
+function renderIntegrity() {
+  const current = state.selectedReport === "job";
+  const integrity = current
+    ? (state.job || {}).integrity
+    : state.historicalIntegrity;
+  const panel = $("integrityPanel");
+  panel.hidden = !integrity;
+  if (!integrity) return;
+
+  const coverage = integrity.source_coverage || {};
+  const oldNewsAudit = (integrity.selected_analysts || []).includes("news") &&
+    coverage.company_feed_links === undefined;
+  $("integrityStatus").textContent = oldNewsAudit
+    ? "Older audit · company news not checked"
+    : (integrity.status === "needs_review" ? "Review needed" : "Limited checks passed");
+  $("integrityStatus").className =
+    "integrity-status " + (oldNewsAudit || integrity.status === "needs_review" ? "review" : "limited");
+
+  const metrics = $("integrityMetrics");
+  metrics.replaceChildren();
+  const sourceEvidence = current
+    ? (state.job || {}).evidence : state.historicalEvidence;
+  const savedSources = (sourceEvidence || {}).sources || [];
+  const countTool = (name, datedOnly) => savedSources.filter((item) =>
+    item.tool === name && (!datedOnly || !!item.published)).length;
+  for (const [label, value] of [
+    ["Ticker-feed candidates", coverage.company_feed_links ?? countTool("get_news", false)],
+    ["Dated ticker-feed", coverage.dated_company_feed_links ?? countTool("get_news", true)],
+    ["Global-context links", coverage.global_context_links ?? countTool("get_global_news", false)],
+    ["Company news calls", coverage.company_news_tool_calls || 0],
+    ["Financial tool calls", coverage.fundamental_tool_calls || 0],
+    ["Future links excluded", coverage.future_dated_links_excluded || 0],
+  ]) {
+    const box = _make("div", null, "integrity-metric");
+    box.append(_make("small", label), _make("strong", value));
+    metrics.append(box);
+  }
+
+  const checks = $("integrityChecks");
+  checks.replaceChildren();
+  for (const item of (integrity.citation_checks || [])) {
+    const row = _make("div", null, "integrity-check");
+    row.append(_make("strong", item.analyst + " · " +
+      item.tool_traced_urls + " of " + item.cited_urls + " URLs traced to tools"));
+    row.append(_make("small",
+      item.cited_urls
+        ? "Tool traceability does not prove factual support for a claim."
+        : "No explicit URLs were cited by this analyst."));
+    checks.append(row);
+  }
+  const price = integrity.market_comparison || {};
+  if (price.has_snapshot) {
+    const line = _make("div", null, "integrity-check");
+    line.append(_make("strong", "Historical close comparison"));
+    line.append(_make("small", (price.matching_current_price_mentions || 0) +
+      " matching current-price statement(s); " +
+      (price.review_flags || []).length + " potential discrepancy flag(s)."));
+    checks.append(line);
+  }
+  const alignment = integrity.decision_alignment || {};
+  if (alignment.research_team || alignment.trader_action) {
+    const line = _make("div", null, "integrity-check");
+    line.append(_make("strong", "Decision trail"));
+    const recommendation = alignment.research_team || "Not stated";
+    const action = alignment.trader_action || "Not stated";
+    const final = alignment.portfolio_rating || "Not stated";
+    line.append(_make("small", "Research: " + recommendation +
+      " · Trader: " + action + " · Final: " + final +
+      (alignment.research_to_portfolio_changed ?
+        ". The final position differs from the research recommendation; review the risk rationale." : ".")));
+    checks.append(line);
+  }
+  const issues = $("integrityWarnings");
+  issues.replaceChildren();
+  const warnings = integrity.warnings || [];
+  if (oldNewsAudit) {
+    issues.append(_make("p",
+      "This saved run predates the company/global news distinction. Its old integrity result did not assess ticker-scoped news coverage; open a newly generated report to see that check."));
+  }
+  if (!warnings.length && !oldNewsAudit) {
+    issues.append(_make("p",
+      "No discrepancies detected by these limited checks. This is not an accuracy guarantee."));
+  } else {
+    for (const warning of warnings.slice(0, 15)) {
+      issues.append(_make("p", "• " + warning));
+    }
+  }
 }
 
 function renderMarketNotice() {
@@ -317,13 +429,67 @@ function appendInlineReportText(parent, text) {
     }
   }
 }
+function tableCells(line) {
+  let text = line.trim();
+  if (text.startsWith("|")) text = text.slice(1);
+  if (text.endsWith("|")) text = text.slice(0, -1);
+  return text.split("|").map((cell) => cell.trim());
+}
+function isTableDivider(line, columns) {
+  if (!line || !line.includes("|")) return false;
+  const cells = tableCells(line);
+  return cells.length === columns &&
+    cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
 function renderReportText(container, rawText) {
   container.replaceChildren();
   let paragraph = null;
-  for (const line of rawText.split(/\r?\n/)) {
+  const lines = rawText.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     if (!line.trim()) {
       paragraph = null;
       continue;
+    }
+    // Safe Markdown tables: generated values are text nodes, never HTML.
+    if (line.includes("|")) {
+      const headers = tableCells(line);
+      if (headers.length > 1 && headers.length <= 12 &&
+          isTableDivider(lines[i + 1], headers.length)) {
+        const wrap = document.createElement("div");
+        wrap.className = "report-table-wrap";
+        const table = document.createElement("table");
+        table.className = "report-table";
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        for (const value of headers) {
+          const th = document.createElement("th");
+          appendInlineReportText(th, value);
+          headRow.append(th);
+        }
+        thead.append(headRow);
+        table.append(thead);
+        const tbody = document.createElement("tbody");
+        i += 2; // Header plus divider consumed.
+        while (i < lines.length && lines[i].includes("|")) {
+          const cells = tableCells(lines[i]);
+          if (cells.length !== headers.length) break;
+          const row = document.createElement("tr");
+          for (const value of cells) {
+            const td = document.createElement("td");
+            appendInlineReportText(td, value);
+            row.append(td);
+          }
+          tbody.append(row);
+          i += 1;
+        }
+        table.append(tbody);
+        wrap.append(table);
+        container.append(wrap);
+        paragraph = null;
+        i -= 1;
+        continue;
+      }
     }
     const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
@@ -357,6 +523,7 @@ function renderReports() {
   const job = state.job || {};
   renderQuality();
   renderAudit();
+  renderIntegrity();
   const jobReport = state.selectedReport === "job";
   const sections = selectedJobSections();
   const tabs = jobReport ? activeReportTabs(job) : [["full", "Saved report"]];
@@ -447,6 +614,7 @@ async function openReport(id, isCurrent) {
       state.historicalQuality = item.quality || null;
       state.historicalEvidence = item.evidence || null;
       state.historicalRisk = item.risk || null;
+      state.historicalIntegrity = item.integrity || null;
       renderReports();
     }
   } catch (err) {
@@ -520,6 +688,7 @@ async function startAnalysis(event) {
     state.historicalQuality = null;
     state.historicalEvidence = null;
     state.historicalRisk = null;
+    state.historicalIntegrity = null;
     renderProgress();
     renderReports();
     $("progress").scrollIntoView({behavior: "smooth", block: "nearest"});

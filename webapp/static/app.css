@@ -62,3 +62,30 @@
 .audit-risk-cell small{display:block;font-size:10px;color:#8b9eb9;margin-bottom:8px}
 .audit-risk-cell strong{display:block;font-size:16px;color:#f0f7fa;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 @media(max-width:700px){.audit-source-list{grid-template-columns:1fr}.audit-risk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* PR4: report provenance and internal consistency checks. */
+.integrity-panel{margin:0 0 18px;padding:19px;border:1px solid #3b5364;border-radius:11px;background:#111f2c}
+.integrity-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.integrity-title h3{font-size:15px;margin:6px 0 0;line-height:1.4}
+.integrity-status{font-size:10px;border:1px solid #4b6664;padding:7px 10px;border-radius:99px;white-space:nowrap}
+.integrity-status.review{color:#efc48b;border-color:#786143;background:#3a2a20}
+.integrity-status.limited{color:#97dec9;border-color:#326a60;background:#133a30}
+.integrity-note{font-size:11px;color:#9bb0bf;line-height:1.65;margin:10px 0}
+.integrity-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
+.integrity-metric{border:1px solid #34475e;border-radius:8px;padding:11px;background:#0f1928}
+.integrity-metric small{font-size:10px;line-height:1.5;color:#8babbf;display:block}
+.integrity-metric strong{font-size:18px;display:block;margin-top:5px;font-variant-numeric:tabular-nums}
+.integrity-checks{display:flex;flex-wrap:wrap;gap:9px;margin:10px 0}
+.integrity-check{flex:1 1 190px;border:1px solid #30475a;border-radius:8px;padding:12px;background:#111c2a;min-width:0}
+.integrity-check strong{font-size:11px;color:#d8eee8;display:block;overflow-wrap:anywhere}
+.integrity-check small{font-size:10px;line-height:1.5;color:#8dabbc;display:block;margin-top:6px}
+.integrity-warnings p{color:#e9c393;font-size:11px;line-height:1.55;margin:6px 0}
+@media(max-width:700px){.integrity-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.integrity-title{align-items:flex-start;flex-direction:column}}
+
+/* Research report Markdown tables, rendered as text-only DOM nodes. */
+.report-table-wrap{max-width:100%;overflow-x:auto;border:1px solid #32475b;border-radius:9px;margin:16px 0 20px}
+.report-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.5;min-width:420px}
+.report-table th,.report-table td{text-align:left;padding:10px 12px;border-bottom:1px solid #293c4f;vertical-align:top;overflow-wrap:anywhere}
+.report-table th{font-weight:700;color:#8fe0cb;background:#17313c;white-space:normal}
+.report-table tbody tr:nth-child(even){background:#112034}
+.report-table tbody tr:last-child td{border-bottom:0}

@@ -142,6 +142,17 @@
         <p class="audit-warnings" id="auditRiskWarnings"></p>
         <p class="audit-explainer">Levels are AI proposals, not verified order prices. No trade is placed; this ignores fees, gaps, slippage and target probability.</p>
       </div>
+      <div id="integrityPanel" class="integrity-panel" hidden>
+        <div class="integrity-title">
+          <div><div class="section-index">RESEARCH CHECKS / DETERMINISTIC</div><h3>Source traceability and consistency</h3></div>
+          <span id="integrityStatus" class="integrity-status"></span>
+        </div>
+        <p class="integrity-note">Checks use tool evidence and explicit report text. Even matching links and prices do not independently verify financial claims.</p>
+        <div id="integrityMetrics" class="integrity-metrics"></div>
+        <div id="integrityChecks" class="integrity-checks"></div>
+        <div id="integrityWarnings" class="integrity-warnings"></div>
+        <p class="integrity-note">For historical Indian stocks, confirm filing publication dates, missing feeds and NSE/BSE data with original disclosures before making decisions.</p>
+      </div>
       <div class="report-tabs" id="reportTabs" role="tablist"></div>
       <div class="report-body"><div id="reportContent" class="report-content" aria-live="polite">Your research output will appear here as the agents finish their work. Start an analysis above, or select a saved report below.</div></div>
       <div class="report-foot"><span>Research text is displayed without executing AI-generated HTML.</span><a id="downloadReport" href="#" target="_blank" rel="noopener noreferrer" hidden>Open saved report ↗</a></div>

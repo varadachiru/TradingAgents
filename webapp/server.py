@@ -21,6 +21,7 @@ from tradingagents.default_config import DEFAULT_CONFIG
 
 from .audit_report import audit_appendix
 from .evidence import EvidenceCollector
+from .integrity import integrity_review
 from .quality import report_quality
 from .risk import proposal_risk
 from .usage import GeminiUsageTracker
@@ -118,7 +119,8 @@ def recent_reports(limit: int = 12) -> list[dict]:
         for name, field in (("usage_summary.json", "usage"),
                             ("quality_summary.json", "quality"),
                             ("evidence_summary.json", "evidence"),
-                            ("risk_summary.json", "risk")):
+                            ("risk_summary.json", "risk"),
+                            ("integrity_summary.json", "integrity")):
             file = folder / name
             if file.is_file() and file.stat().st_size <= 65_536:
                 # Old/partial reports remain readable.
@@ -203,6 +205,7 @@ class ResearchManager:
                 "quality": None,
                 "risk": None,
                 "evidence": None,
+                "integrity": None,
                 "error": None,
             }
             snapshot = copy.deepcopy(self.current)
@@ -288,18 +291,22 @@ class ResearchManager:
             quality = report_quality(final_state, options["analysts"])
             audit = evidence.snapshot()
             risk = proposal_risk(final_state, quality["rating"])
+            integrity = integrity_review(
+                final_state, audit, options["analysts"], quality["rating"], risk
+            )
             for filename, payload in (
                 ("usage_summary.json", usage),
                 ("quality_summary.json", quality),
                 ("evidence_summary.json", audit),
                 ("risk_summary.json", risk),
+                ("integrity_summary.json", integrity),
             ):
                 (saved.parent / filename).write_text(
                     json.dumps(payload, indent=2), encoding="utf-8"
                 )
             # Preserve the original agent reports and HTML; include the
             # deterministic appendix in Markdown without adding AI calls.
-            appendix = audit_appendix(audit, risk)
+            appendix = audit_appendix(audit, risk, integrity)
             (saved.parent / "audit_appendix.md").write_text(appendix, encoding="utf-8")
             with (saved.parent / "complete_report.md").open("a", encoding="utf-8") as report:
                 report.write("\n\n" + appendix)
@@ -312,6 +319,7 @@ class ResearchManager:
                 quality=quality,
                 risk=risk,
                 evidence=audit,
+                integrity=integrity,
             )
             self._stage("Analysis complete")
         except Exception as exc:
