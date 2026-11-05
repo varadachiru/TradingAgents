@@ -4,7 +4,6 @@ No server sockets are opened and no external provider is contacted.
 """
 from __future__ import annotations
 
-import io
 import json
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
