@@ -271,6 +271,14 @@ OPENAI_COMPATIBLE_PROVIDERS: dict[str, ProviderSpec] = {
     "minimax":    ProviderSpec(base_url="https://api.minimax.io/v1", chat_class=MinimaxChatOpenAI),
     "minimax-cn": ProviderSpec(base_url="https://api.minimaxi.com/v1", chat_class=MinimaxChatOpenAI),
     "openrouter": ProviderSpec(base_url="https://openrouter.ai/api/v1"),
+    # Optional, separately authenticated OpenAI-compatible local AI gateway.
+    # Use the local-compatible chat class so structured tool calls do not
+    # force tool_choice on fallback models that reject function pinning.
+    "freellmapi": ProviderSpec(
+        base_url="http://127.0.0.1:3001/v1",
+        base_url_env="FREELLMAPI_BASE_URL",
+        chat_class=LocalCompatibleChatOpenAI,
+    ),
     "mistral":    ProviderSpec(base_url="https://api.mistral.ai/v1"),
     "kimi":       ProviderSpec(base_url="https://api.moonshot.ai/v1"),
     "groq":       ProviderSpec(base_url="https://api.groq.com/openai/v1"),
