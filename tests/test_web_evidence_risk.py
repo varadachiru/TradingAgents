@@ -177,3 +177,29 @@ def test_appendix_includes_missing_target_and_unverified_source():
     assert "not calculated" in markdown
     assert "\\]" in markdown
     assert "Undated article" in markdown
+
+
+
+@pytest.mark.unit
+def test_conflicting_trader_action_withholds_risk_reward():
+    state = {
+        "trader_investment_plan": "**Action**: Buy\n**Entry Price**: 100\n**Stop Loss**: 110",
+        "final_trade_decision": "**Price Target**: 80",
+    }
+    risk = proposal_risk(state, "Sell")
+    assert risk["reward_to_risk"] is None
+    assert risk["risk_pct"] is None
+    assert any("conflicts" in warning for warning in risk["warnings"])
+
+
+@pytest.mark.unit
+def test_stale_snapshot_is_explicitly_flagged():
+    collector = EvidenceCollector("2026-11-03")
+    collector.on_tool_start({"name": "get_verified_market_snapshot"}, "", run_id="m")
+    collector.on_tool_end(
+        "- Latest trading row used: 2026-10-20\n| Close | 1,234.50 |",
+        run_id="m",
+    )
+    snapshot = collector.snapshot()
+    assert snapshot["market_snapshot"]["age_days"] == 14
+    assert any("14 calendar days" in warning for warning in snapshot["warnings"])
