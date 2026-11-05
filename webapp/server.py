@@ -239,7 +239,7 @@ class ResearchManager:
                 if options["quick_model"] == options["deep_model"] else None
             )
             tracker = GeminiUsageTracker(default_model=default_model)
-            evidence = EvidenceCollector(options["date"])
+            evidence = EvidenceCollector(options["date"], analysts=options["analysts"])
             with self.lock:
                 self.usage_tracker = tracker
                 self.evidence_collector = evidence
