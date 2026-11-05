@@ -109,6 +109,12 @@ The selected analysts work at the same time, each on its own tools, and the rese
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
+## Local Research Dashboard (Browser)
+
+A private web interface is included for launching Gemini-backed TradingAgents analyses, monitoring agent progress, and browsing saved reports without terminal commands. It uses your Codespaces secret, not a key in the webpage.
+
+Start with `python -m webapp.server` inside the repository, then open port **8765** in the Codespaces **Ports** tab with visibility **Private**. [Setup, capabilities and security notes](webapp/README.md).
+
 ## Installation and CLI
 
 ### Installation
