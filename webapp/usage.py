@@ -151,3 +151,31 @@ class GeminiUsageTracker(BaseCallbackHandler):
             ),
             "recorded_at": datetime.now(UTC).isoformat(),
         }
+
+
+
+class GatewayUsageTracker(GeminiUsageTracker):
+    """Count model-reported tokens through FreeLLMAPI without inventing prices.
+
+    A model reported by the gateway may be free or billable, or its identity
+    may be hidden behind a routing alias. Gemini Developer API pricing must
+    never be applied to tokens served through a third-party gateway.
+    """
+
+    def snapshot(self) -> dict:
+        data = super().snapshot()
+        for item in data["models"].values():
+            item["estimated_paid_usd"] = None
+        data.update({
+            "provider": "freellmapi",
+            "estimated_paid_usd": None,
+            "pricing_complete": False,
+            "pricing_as_of": None,
+            "pricing_source": None,
+            "note": (
+                "Model-reported token usage only. FreeLLMAPI may route or "
+                "substitute models; cost and fallback events must be verified "
+                "in its own gateway logs. No billing estimate is available."
+            ),
+        })
+        return data
