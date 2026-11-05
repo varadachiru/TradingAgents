@@ -172,9 +172,10 @@ function renderUsage() {
   $("inputTokens").textContent = num(usage.input_tokens);
   $("outputTokens").textContent = num(usage.output_tokens);
   $("modelCalls").textContent = num(usage.calls);
-  const gateway = job.provider === "freellmapi";
+  const gateway = job.provider
+    ? job.provider === "freellmapi" : selectedProvider() === "freellmapi";
   $("usageProviderTitle").textContent = gateway ? "GATEWAY TOKEN USAGE" : "GEMINI TOKEN USAGE";
-  $("estimatedCost").textContent = usage.estimated_paid_usd === null
+  $("estimatedCost").textContent = gateway || usage.estimated_paid_usd === null
     ? "Not available" : dollar(usage.estimated_paid_usd);
   $("usageStatus").textContent = job.status === "running" ? "Live usage" :
     usage.calls ? "Latest run" : "No usage yet";
