@@ -257,3 +257,21 @@ expected. The absence of such a snapshot no longer generates a warning for
 News-only runs. The latest changes add more no-network regression tests;
 rerun Ruff and pytest before merging the PR. You do not need another paid
 Gemini test just to verify the source-origin labels and warnings.
+
+
+## Optional FreeLLMAPI backend (PR #5)
+
+You can now select **Direct Gemini** or **FreeLLMAPI** from the existing
+research console. FreeLLMAPI is a separate, private, OpenAI-compatible
+inference gateway. No provider key or arbitrary gateway URL is accepted from
+browser input. The initial integration requires server-approved quick/deep
+model IDs or restricted profiles.
+
+**Setup, security, same-Codespace installation and testing:**
+[FreeLLMAPI setup guide](FREELLMAPI.md).
+
+The gateway is **not** automatically free. The dashboard shows token usage
+but labels gateway cost *Not available* until real upstream billing can be
+verified. Do not infer actual served models or fallback paths from the
+requested virtual model ID. Direct Gemini remains the default and is never
+silently replaced after a failed gateway request.

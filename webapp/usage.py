@@ -151,3 +151,34 @@ class GeminiUsageTracker(BaseCallbackHandler):
             ),
             "recorded_at": datetime.now(UTC).isoformat(),
         }
+
+
+
+class GatewayUsageTracker(GeminiUsageTracker):
+    """Token counts only for third-party, dynamically routed models.
+
+    FreeLLMAPI may substitute a different upstream model per call; Gemini
+    reference pricing must never be applied to a gateway response, even when
+    a model name resembles a Gemini ID. Gateway usage may omit some fallbacks
+    and server-side retries. Cost requires provider billing/usage records.
+    """
+
+    def snapshot(self) -> dict:
+        output = super().snapshot()
+        for row in output["models"].values():
+            row["estimated_paid_usd"] = None
+        output.update({
+            "provider": "freellmapi",
+            "estimated_paid_usd": None,
+            "pricing_complete": False,
+            "pricing_source": None,
+            "pricing_as_of": None,
+            "note": (
+                "Token counts come from model response metadata when supplied. "
+                "FreeLLMAPI may route or fall back to another model. "
+                "Actual upstream cost, served-model substitutions and some "
+                "retry usage require inspection of gateway logs. "
+                "Missing prices do not mean free or zero-cost usage."
+            ),
+        })
+        return output

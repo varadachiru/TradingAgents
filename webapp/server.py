@@ -21,10 +21,11 @@ from tradingagents.default_config import DEFAULT_CONFIG
 
 from .audit_report import audit_appendix
 from .evidence import EvidenceCollector
+from .gateway import approved_models, gateway_settings, gateway_url, test_gateway_connection
 from .integrity import integrity_review
 from .quality import report_quality
 from .risk import proposal_risk
-from .usage import GeminiUsageTracker
+from .usage import GatewayUsageTracker, GeminiUsageTracker
 
 STATIC_DIR = Path(__file__).parent / "static"
 ANALYSTS = ("market", "social", "news", "fundamentals")
@@ -69,10 +70,23 @@ def validate_run(payload: object) -> dict:
         raise RequestError("Unknown analyst selected.")
     if len(set(selected)) != len(selected):
         raise RequestError("Select each analyst only once.")
+    provider = payload.get("provider", "google")
+    if provider not in ("google", "freellmapi"):
+        raise RequestError("Choose Gemini or FreeLLMAPI as AI provider.")
     quick = payload.get("quick_model", MODELS[0])
     deep = payload.get("deep_model", MODELS[0])
-    if quick not in MODELS or deep not in MODELS:
-        raise RequestError("Choose one of the supported Gemini models.")
+    if provider == "google":
+        if quick not in MODELS or deep not in MODELS:
+            raise RequestError("Choose one of the supported Gemini models.")
+    else:
+        try:
+            models = approved_models()
+        except ValueError as exc:
+            raise RequestError(str(exc)) from exc
+        if not models:
+            raise RequestError("Configure approved FreeLLMAPI quick and deep models on the server first.")
+        if quick != models["quick"] or deep != models["deep"]:
+            raise RequestError("Requested FreeLLMAPI models are not server-approved for their tiers.")
     rounds = payload.get("rounds", 1)
     if type(rounds) is not int or rounds not in (1, 2):
         raise RequestError("Research rounds must be 1 or 2.")
@@ -82,6 +96,7 @@ def validate_run(payload: object) -> dict:
         "analysts": [a for a in ANALYSTS if a in selected],
         "quick_model": quick,
         "deep_model": deep,
+        "provider": provider,
         "rounds": rounds,
     }
 
@@ -120,7 +135,8 @@ def recent_reports(limit: int = 12) -> list[dict]:
                             ("quality_summary.json", "quality"),
                             ("evidence_summary.json", "evidence"),
                             ("risk_summary.json", "risk"),
-                            ("integrity_summary.json", "integrity")):
+                            ("integrity_summary.json", "integrity"),
+                            ("execution_metadata.json", "execution")):
             file = folder / name
             if file.is_file() and file.stat().st_size <= 65_536:
                 # Old/partial reports remain readable.
@@ -136,7 +152,7 @@ class ResearchManager:
     def __init__(self):
         self.lock = threading.Lock()
         self.current: dict | None = None
-        self.usage_tracker: GeminiUsageTracker | None = None
+        self.usage_tracker: GeminiUsageTracker | GatewayUsageTracker | None = None
         self.evidence_collector: EvidenceCollector | None = None
 
     def snapshot(self) -> dict:
@@ -179,10 +195,18 @@ class ResearchManager:
 
     def start(self, payload: object) -> dict:
         options = validate_run(payload)
-        if not os.environ.get("GOOGLE_API_KEY"):
-            raise RequestError(
-                "GOOGLE_API_KEY is missing. Add it as a Codespaces secret and restart the Codespace."
-            )
+        if options["provider"] == "google":
+            if not os.environ.get("GOOGLE_API_KEY"):
+                raise RequestError(
+                    "GOOGLE_API_KEY is missing. Add it as a Codespaces secret and restart the Codespace."
+                )
+        else:
+            settings = gateway_settings()
+            if not settings["configured"]:
+                raise RequestError(
+                    settings["configuration_error"]
+                    or "Configure FREELLMAPI_API_KEY and approved quick/deep models on the server."
+                )
         with self.lock:
             if self.current and self.current["status"] == "running":
                 raise RequestError("An analysis is already running. Let it finish before starting another.")
@@ -206,6 +230,7 @@ class ResearchManager:
                 "risk": None,
                 "evidence": None,
                 "integrity": None,
+                "execution": None,
                 "error": None,
             }
             snapshot = copy.deepcopy(self.current)
@@ -220,20 +245,21 @@ class ResearchManager:
             from tradingagents.graph.trading_graph import TradingAgentsGraph
 
             config = copy.deepcopy(DEFAULT_CONFIG)
+            provider = options["provider"]
             config.update({
-                "llm_provider": "google",
-                "backend_url": None,
+                "llm_provider": provider,
+                "backend_url": gateway_url() if provider == "freellmapi" else None,
                 "quick_think_provider": None,
                 "deep_think_provider": None,
                 "quick_think_llm": options["quick_model"],
                 "deep_think_llm": options["deep_model"],
-                "google_thinking_level": "low",
-                # One API call about every 10s across quick and deep tiers.
-                # Conservative starting point for accounts with low RPM quotas.
-                "google_requests_per_minute": 6,
+                "google_thinking_level": "low" if provider == "google" else None,
+                # Limit Gemini bursts; the local FreeLLMAPI gateway manages
+                # upstream rates and quotas for its own enabled providers.
+                "google_requests_per_minute": 6 if provider == "google" else None,
                 "max_debate_rounds": options["rounds"],
                 "max_risk_discuss_rounds": options["rounds"],
-                "llm_max_retries": 2,
+                "llm_max_retries": 2 if provider == "google" else 1,
                 "output_language": "English",
                 "checkpoint_enabled": True,
             })
@@ -241,7 +267,9 @@ class ResearchManager:
                 options["quick_model"]
                 if options["quick_model"] == options["deep_model"] else None
             )
-            tracker = GeminiUsageTracker(default_model=default_model)
+            tracker = (GeminiUsageTracker if provider == "google" else GatewayUsageTracker)(
+                default_model=default_model
+            )
             evidence = EvidenceCollector(options["date"], analysts=options["analysts"])
             with self.lock:
                 self.usage_tracker = tracker
@@ -294,7 +322,23 @@ class ResearchManager:
             integrity = integrity_review(
                 final_state, audit, options["analysts"], quality["rating"], risk
             )
+            execution = {
+                "provider": provider,
+                "quick_model_requested": options["quick_model"],
+                "deep_model_requested": options["deep_model"],
+                "model_reported_counts": {
+                    name: row["calls"] for name, row in usage["models"].items()
+                },
+                "served_model_reliability": (
+                    "The gateway may substitute upstream models and retry calls. "
+                    "Response model IDs and token counts are provisional; inspect "
+                    "FreeLLMAPI request logs for the full routing and billing trace."
+                    if provider == "freellmapi" else
+                    "Gemini model names are from LLM callback metadata when present."
+                ),
+            }
             for filename, payload in (
+                ("execution_metadata.json", execution),
                 ("usage_summary.json", usage),
                 ("quality_summary.json", quality),
                 ("evidence_summary.json", audit),
@@ -310,6 +354,15 @@ class ResearchManager:
             (saved.parent / "audit_appendix.md").write_text(appendix, encoding="utf-8")
             with (saved.parent / "complete_report.md").open("a", encoding="utf-8") as report:
                 report.write("\n\n" + appendix)
+                report.write(
+                    "\n\n## VII. AI inference configuration\n\n"
+                    f"- Provider: {provider}\n"
+                    f"- Requested quick model/profile: {options['quick_model']}\n"
+                    f"- Requested deep model/profile: {options['deep_model']}\n"
+                    "- Served-model substitutions and actual billing are not "
+                    "independently verified by TradingAgents; inspect the "
+                    "FreeLLMAPI gateway's protected request logs when using the gateway.\n"
+                )
             self._update(
                 status="completed",
                 phase="Analysis complete",
@@ -320,13 +373,15 @@ class ResearchManager:
                 risk=risk,
                 evidence=audit,
                 integrity=integrity,
+                execution=execution,
             )
             self._stage("Analysis complete")
         except Exception as exc:
             error = str(exc)
-            key = os.environ.get("GOOGLE_API_KEY")
-            if key:
-                error = error.replace(key, "[redacted]")
+            for variable in ("GOOGLE_API_KEY", "FREELLMAPI_API_KEY"):
+                secret = os.environ.get(variable)
+                if secret:
+                    error = error.replace(secret, "[redacted]")
             self._update(
                 status="failed",
                 phase="Analysis failed",
@@ -368,6 +423,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/status":
             return self._json(200, {
                 "configured": bool(os.environ.get("GOOGLE_API_KEY")),
+                "providers": {
+                    "google": {"configured": bool(os.environ.get("GOOGLE_API_KEY")),
+                               "models": list(MODELS)},
+                    "freellmapi": gateway_settings(),
+                },
                 "job": self.server.manager.snapshot(),
             })
         if path == "/api/reports":
@@ -390,11 +450,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return self._send(200, content, mime)
 
     def do_POST(self):
-        if urlsplit(self.path).path != "/api/runs":
+        route = urlsplit(self.path).path
+        if route not in ("/api/runs", "/api/gateway/test"):
             return self._json(404, {"error": "Not found"})
         # Cross-site forms cannot send this custom header; do not enable CORS.
         if self.headers.get("X-Requested-With") != "TradingAgentsWeb":
             return self._json(403, {"error": "Browser request header is missing."})
+        if route == "/api/gateway/test":
+            try:
+                return self._json(200, test_gateway_connection())
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
         if "application/json" not in self.headers.get("Content-Type", ""):
             return self._json(415, {"error": "Expected application/json."})
         try:

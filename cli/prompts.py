@@ -404,6 +404,8 @@ def _llm_provider_table() -> list[tuple[str, str, str | None]]:
         ("Azure OpenAI", "azure", None),
         ("Amazon Bedrock", "bedrock", None),
         ("Ollama", "ollama", ollama_url),
+        ("FreeLLMAPI (private OpenAI-compatible gateway)", "freellmapi",
+         os.environ.get("FREELLMAPI_BASE_URL", "http://127.0.0.1:3001/v1")),
         ("OpenAI-compatible (vLLM, LM Studio, llama.cpp, custom relay)", "openai_compatible", None),
     ]
 
