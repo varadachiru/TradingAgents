@@ -151,6 +151,16 @@ def integrity_review(
     warnings.extend(gaps)
 
     market = evidence.get("market_snapshot")
+    if "market" in analysts and not market:
+        warnings.append(
+            "No dated market-tool snapshot was captured; exact current-price "
+            "claims could not be compared with historical vendor data."
+        )
+    if market and (market.get("age_days") or 0) > 7:
+        warnings.append(
+            "The market-tool snapshot predates the analysis by more than "
+            "seven calendar days; confirm exchange-session coverage."
+        )
     price_flags = []
     checked_prices = []
     if market and market.get("point_in_time"):
