@@ -114,6 +114,20 @@ def integrity_review(
         if item.get("tool") in NEWS_TOOLS and not item.get("published")
     )
     gaps = []
+    tool_outcomes = evidence.get("tool_outcomes") or {}
+    for group, names in (
+        ("news", NEWS_TOOLS), ("fundamentals", FUNDAMENTAL_TOOLS),
+    ):
+        if group not in analysts:
+            continue
+        for name in sorted(names):
+            outcomes = tool_outcomes.get(name) or {}
+            if outcomes.get("error") or outcomes.get("unavailable"):
+                gaps.append(
+                    f"{name} returned {outcomes.get('unavailable', 0)} unavailable "
+                    f"and {outcomes.get('error', 0)} errored response(s); "
+                    "this is a data-availability limitation, not bearish evidence."
+                )
     if "news" in analysts:
         if not news_calls:
             gaps.append("No company/global news tool calls were captured.")
@@ -183,6 +197,10 @@ def integrity_review(
             "dated_news_links": dated_news_links,
             "undated_news_links": undated_news_links,
             "future_dated_links_excluded": evidence.get("future_dated_excluded", 0),
+            "tool_outcomes": {
+                name: dict(counts) for name, counts in tool_outcomes.items()
+                if name in NEWS_TOOLS | FUNDAMENTAL_TOOLS
+            },
         },
         "market_comparison": {
             "has_snapshot": bool(market),
