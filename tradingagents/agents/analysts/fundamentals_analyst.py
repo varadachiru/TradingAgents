@@ -29,6 +29,7 @@ def create_fundamentals_analyst(llm):
             "You are a researcher tasked with analyzing fundamental information over the past week about a company. Please write a comprehensive report of the company's fundamental information such as financial documents, company profile, basic company financials, and company financial history to gain a full view of the company's fundamental information to inform traders. Make sure to include as much detail as possible. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
             + " Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."
             + " Use the available tools: `get_fundamentals` for comprehensive company analysis, `get_balance_sheet`, `get_cashflow`, and `get_income_statement` for specific financial statements, and `get_insider_transactions` for recent insider buying and selling."
+            + " For each important financial figure, state the fiscal period, currency and units, document publication or filing date if provided, and actual source URL only if returned by a tool. Distinguish fiscal period end from publication date. Treat a statement whose publication date cannot be established as unverified for historical analysis. Never invent filing links, vintages or financial figures. Note missing sources and dates in a 'Sources and verification gaps' section."
             + get_language_instruction()
         )
 
