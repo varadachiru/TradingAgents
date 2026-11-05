@@ -174,6 +174,11 @@ class EvidenceCollector(BaseCallbackHandler):
             warnings.append(f"{future_count} source link(s) dated after the analysis date were excluded.")
         if prices is None:
             warnings.append("No verified historical OHLCV snapshot was captured; quoted prices have not been checked against market tool output.")
+        else:
+            age = (date.fromisoformat(self.as_of_date) - date.fromisoformat(prices["date"])).days
+            prices["age_days"] = age
+            if age > 7:
+                warnings.append(f"Latest available market-data row is {age} calendar days before the analysis date; confirm data coverage.")
         return {
             "analysis_date": self.as_of_date,
             "tool_calls": calls,
