@@ -23,6 +23,7 @@ const state = {
   historicalQuality: null,
   historicalEvidence: null,
   historicalRisk: null,
+  historicalIntegrity: null,
 };
 
 function formatDate(value) {
@@ -222,6 +223,69 @@ function parsedHostname(url) {
   catch (_) { return "Source"; }
 }
 
+
+function renderIntegrity() {
+  const current = state.selectedReport === "job";
+  const integrity = current
+    ? (state.job || {}).integrity
+    : state.historicalIntegrity;
+  const panel = $("integrityPanel");
+  panel.hidden = !integrity;
+  if (!integrity) return;
+
+  $("integrityStatus").textContent =
+    integrity.status === "needs_review" ? "Review needed" : "Limited checks passed";
+  $("integrityStatus").className =
+    "integrity-status " + (integrity.status === "needs_review" ? "review" : "limited");
+
+  const metrics = $("integrityMetrics");
+  metrics.replaceChildren();
+  const coverage = integrity.source_coverage || {};
+  for (const [label, value] of [
+    ["Dated news links", coverage.dated_news_links || 0],
+    ["News tool calls", coverage.news_tool_calls || 0],
+    ["Financial tool calls", coverage.fundamental_tool_calls || 0],
+    ["Future links excluded", coverage.future_dated_links_excluded || 0],
+  ]) {
+    const box = _make("div", null, "integrity-metric");
+    box.append(_make("small", label), _make("strong", value));
+    metrics.append(box);
+  }
+
+  const checks = $("integrityChecks");
+  checks.replaceChildren();
+  for (const item of (integrity.citation_checks || [])) {
+    const row = _make("div", null, "integrity-check");
+    row.append(_make("strong", item.analyst + " · " +
+      item.tool_traced_urls + " of " + item.cited_urls + " URLs traced to tools"));
+    row.append(_make("small",
+      item.cited_urls
+        ? "Tool traceability does not prove factual support for a claim."
+        : "No explicit URLs were cited by this analyst."));
+    checks.append(row);
+  }
+  const price = integrity.market_comparison || {};
+  if (price.has_snapshot) {
+    const line = _make("div", null, "integrity-check");
+    line.append(_make("strong", "Historical close comparison"));
+    line.append(_make("small", (price.matching_current_price_mentions || 0) +
+      " matching current-price statement(s); " +
+      (price.review_flags || []).length + " potential discrepancy flag(s)."));
+    checks.append(line);
+  }
+  const issues = $("integrityWarnings");
+  issues.replaceChildren();
+  const warnings = integrity.warnings || [];
+  if (!warnings.length) {
+    issues.append(_make("p",
+      "No discrepancies detected by these limited checks. This is not an accuracy guarantee."));
+  } else {
+    for (const warning of warnings.slice(0, 15)) {
+      issues.append(_make("p", "• " + warning));
+    }
+  }
+}
+
 function renderMarketNotice() {
   $("marketNotice").hidden = !/\.(NS|BO)$/i.test($("ticker").value.trim());
 }
@@ -357,6 +421,7 @@ function renderReports() {
   const job = state.job || {};
   renderQuality();
   renderAudit();
+  renderIntegrity();
   const jobReport = state.selectedReport === "job";
   const sections = selectedJobSections();
   const tabs = jobReport ? activeReportTabs(job) : [["full", "Saved report"]];
@@ -447,6 +512,7 @@ async function openReport(id, isCurrent) {
       state.historicalQuality = item.quality || null;
       state.historicalEvidence = item.evidence || null;
       state.historicalRisk = item.risk || null;
+      state.historicalIntegrity = item.integrity || null;
       renderReports();
     }
   } catch (err) {
@@ -520,6 +586,7 @@ async function startAnalysis(event) {
     state.historicalQuality = null;
     state.historicalEvidence = null;
     state.historicalRisk = null;
+    state.historicalIntegrity = null;
     renderProgress();
     renderReports();
     $("progress").scrollIntoView({behavior: "smooth", block: "nearest"});
