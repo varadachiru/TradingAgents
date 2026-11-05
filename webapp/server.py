@@ -354,6 +354,15 @@ class ResearchManager:
             (saved.parent / "audit_appendix.md").write_text(appendix, encoding="utf-8")
             with (saved.parent / "complete_report.md").open("a", encoding="utf-8") as report:
                 report.write("\n\n" + appendix)
+                report.write(
+                    "\n\n## VII. AI inference configuration\n\n"
+                    f"- Provider: {provider}\n"
+                    f"- Requested quick model/profile: {options['quick_model']}\n"
+                    f"- Requested deep model/profile: {options['deep_model']}\n"
+                    "- Served-model substitutions and actual billing are not "
+                    "independently verified by TradingAgents; inspect the "
+                    "FreeLLMAPI gateway's protected request logs when using the gateway.\n"
+                )
             self._update(
                 status="completed",
                 phase="Analysis complete",
