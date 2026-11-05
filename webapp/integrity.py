@@ -11,6 +11,7 @@ import re
 from urllib.parse import urlsplit
 
 from webapp.evidence import safe_source_url
+from webapp.quality import _reported_field
 
 REPORT_KEYS = {
     "market": "market_report",
@@ -155,16 +156,19 @@ def integrity_review(
     if market and market.get("point_in_time"):
         close = market.get("close")
         if isinstance(close, (int, float)) and math.isfinite(close) and close > 0:
-            for candidate in _price_claims(str(state.get("market_report") or "")):
-                if abs(candidate - close) > max(1.0, 0.005 * close):
-                    price_flags.append({
-                        "claimed_price": candidate,
-                        "snapshot_close": close,
-                        "snapshot_date": market.get("date"),
-                        "difference_pct": round((candidate / close - 1) * 100, 2),
-                    })
-                else:
-                    checked_prices.append(candidate)
+            for analyst in analysts:
+                report = str(state.get(REPORT_KEYS[analyst]) or "")
+                for candidate in _price_claims(report):
+                    if abs(candidate - close) > max(1.0, 0.005 * close):
+                        price_flags.append({
+                            "analyst": analyst,
+                            "claimed_price": candidate,
+                            "snapshot_close": close,
+                            "snapshot_date": market.get("date"),
+                            "difference_pct": round((candidate / close - 1) * 100, 2),
+                        })
+                    else:
+                        checked_prices.append(candidate)
     if price_flags:
         warnings.append(
             f"{len(price_flags)} current-price mention(s) differ from the "
@@ -172,6 +176,17 @@ def integrity_review(
             "and context; this is a review flag, not proof of a false claim."
         )
 
+    # Changes between research-team and final portfolio views may be
+    # deliberate; show them for transparency rather than call them "errors".
+    research_call = _reported_field(
+        str(state.get("investment_plan") or ""), "Recommendation"
+    )
+    trader_action = _reported_field(
+        str(state.get("trader_investment_plan") or ""), "Action"
+    )
+    decision_change = bool(
+        research_call and research_call.lower() != rating.lower()
+    )
     # The price target should be justified in the report; never create one.
     target = risk.get("price_target")
     if rating in {"Buy", "Overweight", "Sell", "Underweight"}:
@@ -201,6 +216,16 @@ def integrity_review(
                 name: dict(counts) for name, counts in tool_outcomes.items()
                 if name in NEWS_TOOLS | FUNDAMENTAL_TOOLS
             },
+        },
+        "decision_alignment": {
+            "research_team": research_call,
+            "trader_action": trader_action,
+            "portfolio_rating": rating,
+            "research_to_portfolio_changed": decision_change,
+            "note": (
+                "Different recommendations can be justified as the risk team weighs "
+                "evidence; divergence alone does not establish an error."
+            ),
         },
         "market_comparison": {
             "has_snapshot": bool(market),
