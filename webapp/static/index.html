@@ -129,6 +129,19 @@
         <div id="qualityDetails"></div>
         <p class="quality-disclaimer">These checks confirm report sections, not whether financial information or AI forecasts are correct.</p>
       </div>
+      <div id="auditPanel" class="audit-panel" hidden>
+        <div class="audit-title"><div><div class="section-index">EVIDENCE / POINT-IN-TIME</div><h3>Source and data audit</h3></div><small id="auditSourceCount"></small></div>
+        <p class="audit-explainer">Links below come from data-tool responses, not AI-generated citations. Their presence does not prove the report's claims.</p>
+        <div class="audit-market" id="auditMarket"></div>
+        <div class="audit-source-list" id="auditSources"></div>
+        <p class="audit-warnings" id="auditWarnings"></p>
+      </div>
+      <div id="riskPanel" class="audit-panel" hidden>
+        <div class="audit-title"><div><div class="section-index">TRADE SCENARIO / DETERMINISTIC</div><h3>Risk and reward</h3></div><small id="auditDirection"></small></div>
+        <div class="audit-risk-grid" id="auditRiskGrid"></div>
+        <p class="audit-warnings" id="auditRiskWarnings"></p>
+        <p class="audit-explainer">Levels are AI proposals, not verified order prices. No trade is placed; this ignores fees, gaps, slippage and target probability.</p>
+      </div>
       <div class="report-tabs" id="reportTabs" role="tablist"></div>
       <div class="report-body"><div id="reportContent" class="report-content" aria-live="polite">Your research output will appear here as the agents finish their work. Start an analysis above, or select a saved report below.</div></div>
       <div class="report-foot"><span>Research text is displayed without executing AI-generated HTML.</span><a id="downloadReport" href="#" target="_blank" rel="noopener noreferrer" hidden>Open saved report ↗</a></div>
