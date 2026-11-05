@@ -181,7 +181,12 @@ function renderAudit() {
       rows.append(line);
     }
     if (!(evidence.sources || []).length) {
-      rows.append(_make("p", "No source URLs were returned by tools during this run."));
+      rows.append(_make("p", evidence.source_note || (
+        (state.selectedReport === "job" && (state.job || {}).analysts &&
+        (state.job.analysts || []).every((analyst) => analyst === "market"))
+          ? "Technical-only research relies on the historical market snapshot; no article links were expected."
+          : "No source URLs were returned by tools during this run."
+      )));
     }
     $("auditWarnings").textContent = (evidence.warnings || []).join(" ");
   }
