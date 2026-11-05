@@ -320,6 +320,11 @@ class ResearchManager:
 
             saved = graph.save_reports(final_state, ticker)
             usage = tracker.snapshot()
+            usage["provider"] = options["provider"]
+            usage["requested_models"] = {
+                "quick": options["quick_model"],
+                "deep": options["deep_model"],
+            }
             quality = report_quality(final_state, options["analysts"])
             audit = evidence.snapshot()
             risk = proposal_risk(final_state, quality["rating"])
