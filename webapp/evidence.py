@@ -87,6 +87,14 @@ def extract_sources(text: str, tool: str, as_of_date: str) -> list[dict]:
                     "published": timestamp,
                     "date_status": date_status,
                     "tool": tool,
+                    # Tool origin is the only defensible classification:
+                    # never claim a global article is relevant to the ticker
+                    # merely because it appeared in the same research run.
+                    "scope": (
+                        "company_feed" if tool == "get_news"
+                        else "global_context" if tool == "get_global_news"
+                        else "other_source"
+                    ),
                 })
     return sources
 
@@ -208,7 +216,8 @@ class EvidenceCollector(BaseCallbackHandler):
         if future_count:
             warnings.append(f"{future_count} source link(s) dated after the analysis date were excluded.")
         if prices is None:
-            warnings.append("No verified historical OHLCV snapshot was captured; quoted prices have not been checked against market tool output.")
+            if self.analysts is None or "market" in self.analysts:
+                warnings.append("No verified historical OHLCV snapshot was captured; quoted prices have not been checked against market tool output.")
         else:
             age = (date.fromisoformat(self.as_of_date) - date.fromisoformat(prices["date"])).days
             prices["age_days"] = age
@@ -223,6 +232,7 @@ class EvidenceCollector(BaseCallbackHandler):
             "dated_source_count": dated,
             "article_links_expected": links_expected,
             "source_note": source_note,
+            "market_snapshot_expected": self.analysts is None or "market" in self.analysts,
             "future_dated_excluded": future_count,
             "market_snapshot": prices,
             "warnings": warnings,
