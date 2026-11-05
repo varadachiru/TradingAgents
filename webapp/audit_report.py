@@ -11,7 +11,7 @@ def _escape(text: object) -> str:
     return str(text or "").replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("\n", " ")[:240]
 
 
-def audit_appendix(evidence: dict, risk: dict) -> str:
+def audit_appendix(evidence: dict, risk: dict, integrity: dict | None = None) -> str:
     lines = [
         "## VI. Evidence and Trade-Risk Audit (deterministic)",
         "",
@@ -71,4 +71,35 @@ def audit_appendix(evidence: dict, risk: dict) -> str:
         "Risk/reward ignores slippage, overnight gaps, fees and target probability. "
         "Verify documents, dates, prices and reasoning against original sources before investing.",
     ])
+    if integrity is not None:
+        lines.extend([
+            "",
+            "### Research integrity checks (heuristic)",
+            "",
+            f"- Review status: **{_escape(integrity.get('status', 'unknown'))}**",
+            f"- Dated news links captured: {integrity.get('source_coverage', {}).get('dated_news_links', 0)}",
+            f"- News tool calls observed: {integrity.get('source_coverage', {}).get('news_tool_calls', 0)}",
+            f"- Financial tool calls observed: {integrity.get('source_coverage', {}).get('fundamental_tool_calls', 0)}",
+        ])
+        for item in integrity.get("citation_checks", []):
+            lines.append(
+                "- " + _escape(item.get("analyst", "Analyst")) + ": "
+                + str(item.get("tool_traced_urls", 0)) + " of "
+                + str(item.get("cited_urls", 0)) + " cited URL(s) matched tool-returned links"
+            )
+        for discrepancy in integrity.get("market_comparison", {}).get("review_flags", []):
+            lines.append(
+                "- **Review price mention:** claimed "
+                + str(discrepancy.get("claimed_price")) + ", snapshot "
+                + str(discrepancy.get("snapshot_close")) + " as of "
+                + _escape(discrepancy.get("snapshot_date")) + "."
+            )
+        for warning in integrity.get("warnings", []):
+            lines.append(f"- **Research check:** {_escape(warning)}")
+        lines.extend([
+            "",
+            "A URL match only demonstrates traceability to a tool result, "
+            "not article authenticity, factual verification or claim-level support. "
+            "These rules do not identify every inaccurate financial claim.",
+        ])
     return "\n".join(lines) + "\n"
