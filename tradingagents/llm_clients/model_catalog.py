@@ -202,6 +202,7 @@ MODEL_OPTIONS: ProviderModeOptions = {
     # Generic OpenAI-compatible endpoint: the model is whatever the user's
     # server serves, so only "Custom model ID" is offered.
     "openai_compatible": _CUSTOM_ONLY,
+    "freellmapi": _CUSTOM_ONLY,
     # Hosted OpenAI-compatible providers that serve many (and frequently
     # changing) models — offer "Custom model ID" rather than a list that goes
     # stale. The endpoint + key are wired by the provider; the user picks the
