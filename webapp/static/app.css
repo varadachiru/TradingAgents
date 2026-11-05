@@ -81,3 +81,11 @@
 .integrity-check small{font-size:10px;line-height:1.5;color:#8dabbc;display:block;margin-top:6px}
 .integrity-warnings p{color:#e9c393;font-size:11px;line-height:1.55;margin:6px 0}
 @media(max-width:700px){.integrity-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.integrity-title{align-items:flex-start;flex-direction:column}}
+
+/* Research report Markdown tables, rendered as text-only DOM nodes. */
+.report-table-wrap{max-width:100%;overflow-x:auto;border:1px solid #32475b;border-radius:9px;margin:16px 0 20px}
+.report-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.5;min-width:420px}
+.report-table th,.report-table td{text-align:left;padding:10px 12px;border-bottom:1px solid #293c4f;vertical-align:top;overflow-wrap:anywhere}
+.report-table th{font-weight:700;color:#8fe0cb;background:#17313c;white-space:normal}
+.report-table tbody tr:nth-child(even){background:#112034}
+.report-table tbody tr:last-child td{border-bottom:0}
