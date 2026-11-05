@@ -28,9 +28,18 @@ existing TradingAgents engine and saved to its normal reports directory.
    Gemini 3.1 Flash-Lite in both model fields and 1 research round.
    Click **Run AI analysis**.
 
-6. Inspect progress and the final portfolio rating. Completed Markdown
-   reports remain in ~/.tradingagents/logs/reports/ and appear in
-   **Saved analyses** even after the server is restarted.
+6. Inspect progress, the final portfolio rating, and the **Token Usage**
+   panel. The usage panel shows model-reported Gemini input/output tokens and
+   an estimated Standard paid-tier token cost (USD). It is NOT your actual
+   Google bill, especially on Free tier, when token usage is missing, or when
+   retries, grounding and third-party data fees are involved.
+7. Use **Research completeness** to see which selected analyst reports are
+   present. Missing price targets, time horizons or risk debate text appear
+   as warnings; the checks do not independently validate financial data.
+8. Completed Markdown reports remain in ~/.tradingagents/logs/reports/ and
+   appear in **Saved analyses** even after the server is restarted. New
+   runs also save usage_summary.json and quality_summary.json beside their
+   complete_report.md. Older reports stay readable without these files.
 
 ## How it works
 
@@ -70,3 +79,32 @@ For development:
     pytest -q tests/test_web_dashboard.py
 
 No real investment orders or live broker connections are made.
+
+## Full research testing on Indian stocks
+
+Use the same webpage, with **RELIANCE.NS**, a past trading date,
+**Full · 4 analysts** and **Gemini 3.1 Flash-Lite** for both tiers.
+The web server paces model requests at 6/min, but the run still makes
+many sequential requests and can encounter provider limits. Verify that
+**Technical, Sentiment, News and Fundamentals** all appear as present in
+Research completeness and independently verify dates and data sources.
+Some Indian-company financial-statement providers have gaps; report section
+presence alone does not mean its facts are complete or correct.
+
+## Usage measurement limitations
+
+The web console uses LangChain's on_llm_end callback and reported model usage
+metadata to count model calls and input/output tokens, including reported
+thinking tokens within output totals. Reference prices (as of 2026-11-05):
+Gemini 3.1 Flash-Lite **$0.25 per million input tokens** and **$1.50 per
+million output tokens**, plus the lower cached-input rate where caching
+metadata is present. See https://ai.google.dev/gemini-api/docs/pricing .
+Other model IDs are marked unpriced rather than assigned an invented rate.
+Calls without token metadata mark the estimate **partial**. This is not a
+billing reconciliation, spending limit, or guarantee that $10 in credits will
+fund a particular number of runs. The $10 balance is not read by this app.
+
+The offline tests use fake LangGraph results and do not call Gemini:
+
+    ruff check webapp tests/test_web_dashboard.py tests/test_web_usage_and_quality.py
+    pytest -q tests/test_web_dashboard.py tests/test_web_usage_and_quality.py

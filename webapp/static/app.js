@@ -20,6 +20,7 @@ const state = {
   historicalText: "",
   savedText: "",
   viewedReportId: null,
+  historicalQuality: null,
 };
 
 function formatDate(value) {
@@ -61,6 +62,77 @@ function statusClass(status) {
   return status === "completed" ? "completed" : status === "failed" ? "failed" :
     status === "running" ? "running" : "idle";
 }
+
+function num(value) {
+  return Number(value || 0).toLocaleString();
+}
+function dollar(value) {
+  const amount = Number(value || 0);
+  return "$" + amount.toFixed(6);
+}
+function renderUsage() {
+  const job = state.job || {};
+  const usage = job.usage || {};
+  $("inputTokens").textContent = num(usage.input_tokens);
+  $("outputTokens").textContent = num(usage.output_tokens);
+  $("modelCalls").textContent = num(usage.calls);
+  $("estimatedCost").textContent = dollar(usage.estimated_paid_usd);
+  $("usageStatus").textContent = job.status === "running" ? "Live estimate" :
+    usage.calls ? "Latest run" : "No usage yet";
+  $("costIndicator").textContent = usage.pricing_complete && usage.calls ?
+    "Reference only" : "Partial / unverified";
+  const unreported = usage.unreported_calls || 0;
+  $("usageNote").textContent = usage.calls
+    ? "Standard paid-tier reference only; actual charges may differ. " +
+      (unreported ? unreported + " model call(s) had no token usage metadata. " : "") +
+      (!usage.pricing_complete ? "Not all model usage was priced. " : "") +
+      "Does not include some retries, external data or grounding fees."
+    : "Token counts appear as Gemini calls finish. A $0 estimate is not proof of no charges.";
+}
+function renderQuality() {
+  const jobReport = state.selectedReport === "job";
+  const q = jobReport ? (state.job || {}).quality : state.historicalQuality;
+  const panel = $("qualityPanel");
+  panel.hidden = !q;
+  if (!q) return;
+  $("qualityCoverage").textContent = q.sections_present + " of " +
+    q.sections_requested + " requested analyst reports";
+  const details = $("qualityDetails");
+  details.replaceChildren();
+  for (const report of (q.analysts || [])) {
+    const line = document.createElement("span");
+    line.className = "quality-pill" + (report.present ? " present" : " missing");
+    line.textContent = (report.present ? "✓ " : "! ") + report.label;
+    details.append(line);
+  }
+  const fields = [
+    ["Target", q.explicit_price_target || "Not provided"],
+    ["Horizon", q.explicit_time_horizon || "Not provided"],
+    ["Risk debate", q.risk_debate_present ? "Recorded" : "Not found"],
+  ];
+  const row = document.createElement("div");
+  row.className = "quality-facts";
+  for (const [label, value] of fields) {
+    const item = document.createElement("span");
+    const title = document.createElement("small");
+    title.textContent = label;
+    const content = document.createElement("strong");
+    content.textContent = value;
+    item.append(title, content);
+    row.append(item);
+  }
+  details.append(row);
+  if (q.warnings && q.warnings.length) {
+    const warning = document.createElement("p");
+    warning.className = "quality-warning";
+    warning.textContent = q.warnings.join(" ");
+    details.append(warning);
+  }
+}
+function renderMarketNotice() {
+  $("marketNotice").hidden = !/\.(NS|BO)$/i.test($("ticker").value.trim());
+}
+
 function renderProgress() {
   const job = state.job || {};
   const status = job.status || "idle";
@@ -124,6 +196,7 @@ function renderProgress() {
   $("runButton").disabled = !state.configured || status === "running";
   $("runLabel").textContent = !state.configured ? "Configure Gemini API key" :
     status === "running" ? "Analysis running..." : "Run AI analysis";
+  renderUsage();
 }
 function activeReportTabs(job) {
   if (!job.analysts || !job.analysts.length) return [["full", "Full saved report"]];
@@ -189,6 +262,7 @@ function renderReportText(container, rawText) {
 
 function renderReports() {
   const job = state.job || {};
+  renderQuality();
   const jobReport = state.selectedReport === "job";
   const sections = selectedJobSections();
   const tabs = jobReport ? activeReportTabs(job) : [["full", "Saved report"]];
@@ -246,6 +320,12 @@ function renderHistory() {
     const date = document.createElement("small");
     date.textContent = formatDate(item.created_at);
     left.append(title, date);
+    if (item.usage && item.usage.calls) {
+      const cost = document.createElement("small");
+      cost.textContent = num(item.usage.input_tokens + item.usage.output_tokens) +
+        " tokens · " + dollar(item.usage.estimated_paid_usd) + " reference cost";
+      left.append(cost);
+    }
     const arrow = document.createElement("span");
     arrow.className = "right";
     arrow.textContent = "↗";
@@ -269,6 +349,7 @@ async function openReport(id, isCurrent) {
       state.selectedReport = id;
       state.selectedTab = "full";
       state.historicalText = text;
+      state.historicalQuality = (state.archive.find((item) => item.id === id) || {}).quality || null;
       renderReports();
     }
   } catch (err) {
@@ -339,6 +420,7 @@ async function startAnalysis(event) {
     state.selectedTab = "final_trade_decision";
     state.savedText = "";
     state.viewedReportId = null;
+    state.historicalQuality = null;
     renderProgress();
     renderReports();
     $("progress").scrollIntoView({behavior: "smooth", block: "nearest"});
@@ -356,6 +438,7 @@ document.querySelectorAll('input[name="analyst"]').forEach((input) => {
 });
 $("researchForm").addEventListener("submit", startAnalysis);
 $("refreshHistory").addEventListener("click", refreshHistory);
+$("ticker").addEventListener("input", renderMarketNotice);
 $("analysisDate").value = [
   new Date().getFullYear(),
   String(new Date().getMonth() + 1).padStart(2, "0"),
@@ -363,6 +446,7 @@ $("analysisDate").value = [
 ].join("-");
 $("analysisDate").max = $("analysisDate").value;
 refreshPreset();
+renderMarketNotice();
 renderProgress();
 renderReports();
 refreshHistory();
