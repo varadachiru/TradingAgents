@@ -273,6 +273,19 @@ function renderIntegrity() {
       (price.review_flags || []).length + " potential discrepancy flag(s)."));
     checks.append(line);
   }
+  const alignment = integrity.decision_alignment || {};
+  if (alignment.research_team || alignment.trader_action) {
+    const line = _make("div", null, "integrity-check");
+    line.append(_make("strong", "Decision trail"));
+    const recommendation = alignment.research_team || "Not stated";
+    const action = alignment.trader_action || "Not stated";
+    const final = alignment.portfolio_rating || "Not stated";
+    line.append(_make("small", "Research: " + recommendation +
+      " · Trader: " + action + " · Final: " + final +
+      (alignment.research_to_portfolio_changed ?
+        ". The final position differs from the research recommendation; review the risk rationale." : ".")));
+    checks.append(line);
+  }
   const issues = $("integrityWarnings");
   issues.replaceChildren();
   const warnings = integrity.warnings || [];
