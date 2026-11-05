@@ -178,7 +178,7 @@ def test_authenticated_gateway_probe_uses_server_secret_not_browser(configured, 
         outgoing["timeout"] = timeout
         return MockResponse()
 
-    monkeypatch.setattr(gateway, "urlopen", fake_urlopen)
+    monkeypatch.setattr(gateway, "build_opener", lambda *_args: SimpleNamespace(open=fake_urlopen))
     response = gateway.test_gateway_connection()
     assert response["connected"] is True
     assert response["quick_model_listed"]
@@ -194,7 +194,7 @@ def test_gateway_auth_errors_are_safe(configured, monkeypatch):
     def rejected(request, timeout):
         raise HTTPError(request.full_url, 401, "secret=leak-me", None, None)
 
-    monkeypatch.setattr(gateway, "urlopen", rejected)
+    monkeypatch.setattr(gateway, "build_opener", lambda *_args: SimpleNamespace(open=rejected))
     with pytest.raises(ValueError, match="HTTP 401") as exc:
         gateway.test_gateway_connection()
     assert "secret=" not in str(exc.value)
@@ -205,7 +205,7 @@ def test_network_failure_is_safe(configured, monkeypatch):
     def failed(_request, timeout):
         raise URLError("contains super-private host and token")
 
-    monkeypatch.setattr(gateway, "urlopen", failed)
+    monkeypatch.setattr(gateway, "build_opener", lambda *_args: SimpleNamespace(open=failed))
     with pytest.raises(ValueError, match="Could not reach"):
         gateway.test_gateway_connection()
 
@@ -318,3 +318,17 @@ def test_gateway_simulated_langgraph_run_saves_provider_metadata(configured, tmp
     assert job["usage"]["estimated_paid_usd"] is None
     assert job["execution"]["provider"] == "freellmapi"
     assert json.loads((report_dir / "execution_metadata.json").read_text())["provider"] == "freellmapi"
+
+
+@pytest.mark.unit
+def test_gateway_rejects_redirects_that_could_leak_bearer_token():
+    from urllib.request import Request
+
+    request = Request(
+        "http://127.0.0.1:3001/v1/models",
+        headers={"Authorization": "Bearer fake"},
+    )
+    with pytest.raises(HTTPError, match="redirects are forbidden"):
+        gateway._NoRedirect().redirect_request(
+            request, None, 302, "Moved", {}, "https://untrusted.example.com/"
+        )
