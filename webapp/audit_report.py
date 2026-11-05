@@ -89,10 +89,18 @@ def audit_appendix(evidence: dict, risk: dict, integrity: dict | None = None) ->
             )
         for discrepancy in integrity.get("market_comparison", {}).get("review_flags", []):
             lines.append(
-                "- **Review price mention:** claimed "
-                + str(discrepancy.get("claimed_price")) + ", snapshot "
-                + str(discrepancy.get("snapshot_close")) + " as of "
-                + _escape(discrepancy.get("snapshot_date")) + "."
+                "- **Review price mention (" + _escape(discrepancy.get("analyst", "analyst"))
+                + "):** claimed " + str(discrepancy.get("claimed_price"))
+                + ", snapshot " + str(discrepancy.get("snapshot_close"))
+                + " as of " + _escape(discrepancy.get("snapshot_date")) + "."
+            )
+        decision = integrity.get("decision_alignment") or {}
+        if decision.get("research_team") or decision.get("trader_action"):
+            lines.append(
+                "- **Decision trail:** Research team "
+                + _escape(decision.get("research_team") or "not stated")
+                + ", Trader " + _escape(decision.get("trader_action") or "not stated")
+                + ", Final " + _escape(decision.get("portfolio_rating") or "not stated") + "."
             )
         for warning in integrity.get("warnings", []):
             lines.append(f"- **Research check:** {_escape(warning)}")
