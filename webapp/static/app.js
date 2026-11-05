@@ -410,7 +410,7 @@ async function checkGatewayConnection() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Gateway connection failed.");
     result.textContent = "Connected · " + payload.ready_models +
-      " ready catalog model(s). Tool calling and profiles still need testing.";
+      " ready catalog model(s). " + payload.note;
   } catch (error) {
     result.textContent = error.message || "Cannot contact local gateway.";
   } finally {
