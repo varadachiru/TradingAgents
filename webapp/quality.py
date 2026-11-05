@@ -51,18 +51,20 @@ def report_quality(state: dict, analysts: list[str]) -> dict:
     )
     target = _reported_field(final, "Price Target")
     horizon = _reported_field(final, "Time Horizon")
+    rating = run_rating(state)
     warnings = []
     if missing:
         warnings.append("Selected analyst reports missing: " + ", ".join(missing))
-    if not target:
-        warnings.append("No explicit price target was provided in the final decision.")
+    # A Hold decision can reasonably have no directional upside target.
+    if not target and rating in {"Buy", "Overweight", "Sell", "Underweight"}:
+        warnings.append("No explicit price target was provided for the directional decision.")
     if not horizon:
         warnings.append("No explicit investment time horizon was provided.")
     if not risk_present:
         warnings.append("Risk-team debate text was not found in the final state.")
 
     return {
-        "rating": run_rating(state),
+        "rating": rating,
         "analysts": selected,
         "sections_present": len(selected) - len(missing),
         "sections_requested": len(selected),
