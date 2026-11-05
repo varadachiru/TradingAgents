@@ -108,7 +108,8 @@ def test_gateway_connection() -> dict:
         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
     )
     try:
-        with build_opener(_NoRedirect).open(request, timeout=5) as response:
+        # Avoid outbound HTTP_PROXY settings for authenticated localhost calls.
+        with build_opener(ProxyHandler({}), _NoRedirect).open(request, timeout=5) as response:
             if response.status != 200:
                 raise GatewayConfigError(
                     f"FreeLLMAPI returned HTTP {response.status}."
