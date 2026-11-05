@@ -238,3 +238,55 @@ def test_research_and_final_recommendation_difference_is_transparent_not_error()
     assert result["decision_alignment"]["research_to_portfolio_changed"] is True
     assert result["status"] == "limited_checks_passed"
     assert not result["warnings"]
+
+
+@pytest.mark.unit
+def test_global_headlines_do_not_count_as_company_news_evidence():
+    global_items = [
+        {"url": "https://world.example.org/story-a", "published": AS_OF,
+         "tool": "get_global_news", "title": "Unrelated US equities"},
+        {"url": "https://world.example.org/story-b", "published": AS_OF,
+         "tool": "get_global_news", "title": "Other company"},
+    ]
+    data = evidence(sources=global_items, calls={"get_global_news": 1})
+    result = check(
+        {"news_report": "The global markets have positive momentum."},
+        data, ["news"], rating="Hold",
+    )
+    coverage = result["source_coverage"]
+    assert coverage["dated_news_links"] == 2
+    assert coverage["dated_company_feed_links"] == 0
+    assert coverage["global_context_links"] == 2
+    assert coverage["company_news_tool_calls"] == 0
+    assert any("global headlines" in issue.lower() for issue in result["warnings"])
+    assert any("global/macro articles" in issue.lower() for issue in result["warnings"])
+    assert result["status"] == "needs_review"
+
+
+@pytest.mark.unit
+def test_dated_ticker_scoped_news_distinguished_from_global_context():
+    data = evidence(sources=[
+        {"url": "https://company.example.org/filing-story", "published": AS_OF,
+         "tool": "get_news"},
+        {"url": "https://macro.example.org/market-story", "published": AS_OF,
+         "tool": "get_global_news"},
+    ], calls={"get_news": 1, "get_global_news": 1})
+    result = check({"news_report": "Company and macro developments."}, data, ["news"])
+    coverage = result["source_coverage"]
+    assert coverage["dated_company_feed_links"] == 1
+    assert coverage["dated_global_context_links"] == 1
+    assert not any("No dated ticker-scoped" in issue for issue in result["warnings"])
+
+
+@pytest.mark.unit
+def test_undated_ticker_feed_does_not_count_as_dated_company_evidence():
+    data = evidence(sources=[
+        {"url": "https://company.example.org/undated", "published": None,
+         "tool": "get_news"},
+        {"url": "https://macro.example.org/dated", "published": AS_OF,
+         "tool": "get_global_news"},
+    ], calls={"get_news": 1, "get_global_news": 1})
+    result = check({"news_report": "Some headlines."}, data, ["news"])
+    assert result["source_coverage"]["company_feed_links"] == 1
+    assert result["source_coverage"]["dated_company_feed_links"] == 0
+    assert any("No dated ticker-scoped" in issue for issue in result["warnings"])
