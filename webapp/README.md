@@ -257,3 +257,84 @@ expected. The absence of such a snapshot no longer generates a warning for
 News-only runs. The latest changes add more no-network regression tests;
 rerun Ruff and pytest before merging the PR. You do not need another paid
 Gemini test just to verify the source-origin labels and warnings.
+
+
+## PR #5 — optional local FreeLLMAPI gateway
+
+The TradingAgents web console can now select **Direct Google Gemini** (unchanged default) or **FreeLLMAPI** (opt-in). The gateway uses TradingAgents' existing LangChain OpenAI-compatible provider registry. The research graph remains unchanged; there is no public hosting or brokerage integration.
+
+### Secure server configuration
+
+PR #5 intentionally connects only to **loopback HTTP**, with an explicit port and /v1 path. Localhost endpoints such as http://127.0.0.1:3001/v1 are accepted; LAN/public hosts, redirect targets, credentials inside URLs, query strings, and public Codespaces forwarding URLs are rejected. Two **separate** Codespaces do not share localhost.
+
+Keep ports 8765 (TradingAgents), 3001 (FreeLLMAPI backend) and 5173 (FreeLLMAPI Vite dashboard) **Private** in the Codespaces Ports tab. The browser never sends or receives gateway bearer tokens, provider credentials or the gateway URL. Models submitted by a browser must match the operator's server-approved names.
+
+| Variable | Example / default | Purpose |
+|---|---|---|
+| GOOGLE_API_KEY | Existing Codespaces secret | Direct Gemini, unchanged |
+| FREELLMAPI_API_KEY | FreeLLMAPI unified API key, **secret** | Authenticate to /v1 gateway |
+| FREELLMAPI_BASE_URL | http://127.0.0.1:3001/v1 | Local gateway endpoint |
+| FREELLMAPI_QUICK_MODEL | auto:trading-quick | Approved quick model/profile |
+| FREELLMAPI_DEEP_MODEL | auto:trading-deep | Approved deep model/profile |
+
+The default quick/deep routing profiles are **names to create**, not automatically installed. Create profiles called trading-quick and trading-deep in FreeLLMAPI, restricting both to suitable authorized models, or set specific approved model IDs. Avoid allowing arbitrary auto routing to models without reliable tool calling and structured outputs. Free-tier quotas and provider terms vary; free inference is not guaranteed.
+
+### Start the gateway in the SAME TradingAgents Codespace
+
+Stop the existing Python web dashboard before changing branches. In the TradingAgents Codespace open a new terminal:
+
+~~~bash
+cd /workspaces
+git clone https://github.com/varadachiru/freellmapi.git
+cd freellmapi
+npm install
+umask 077
+printf 'ENCRYPTION_KEY=%s\nPORT=3001\nHOST=127.0.0.1\n' "$(openssl rand -hex 32)" > .env
+npm run dev
+~~~
+
+If the sibling FreeLLMAPI folder already exists, reuse it instead of cloning again. The gateway runs at 127.0.0.1:3001, and its Vite dashboard typically runs at 127.0.0.1:5173. Open the **Private** forwarded Vite port and complete the FreeLLMAPI first-run admin setup. Add provider keys you are entitled to use and configure the named fallback profiles. Copy the **unified gateway API key** from FreeLLMAPI's Keys screen — this is distinct from any underlying Google or Groq provider key.
+
+Preserve the untracked FreeLLMAPI .env encryption key and its SQLite database across restarts. Regenerating the encryption key with an existing database would make previously encrypted provider keys unreadable.
+
+Add FREELLMAPI_API_KEY as a **GitHub Codespaces secret** for the TradingAgents repository. Restart/rebuild the Codespace to receive it, then restart both dev servers. Never paste credentials into chat, Git commits, screenshots, browser JavaScript or shell history. Set optional nonsecret aliases in your TradingAgents terminal:
+
+~~~bash
+export FREELLMAPI_QUICK_MODEL=auto:trading-quick
+export FREELLMAPI_DEEP_MODEL=auto:trading-deep
+export FREELLMAPI_BASE_URL=http://127.0.0.1:3001/v1
+~~~
+
+Start TradingAgents in a separate terminal within that **same** Codespace:
+
+~~~bash
+cd /workspaces/TradingAgents
+python3 -m webapp.server
+~~~
+
+On **Private** port 8765, select **FreeLLMAPI** and click **Test gateway connection**. The backend calls authenticated GET /v1/models?available=true and reports whether the approved quick/deep model IDs are listed. This proves gateway connectivity only; it does not prove tool calls, structured outputs or fallback quality.
+
+### Required live compatibility smoke test (a few paid/free-tier requests)
+
+Run this after configuring the FreeLLMAPI gateway and model profiles:
+
+~~~bash
+python3 -m webapp.gateway_smoke
+~~~
+
+The opt-in test checks basic responses in both tiers, a tool call with structured arguments in the quick tier, and Pydantic structured output in the deep tier. If any test fails, change the gateway model profiles to approved capable models before attempting financial research. The script makes no trades and never needs exchange or brokerage credentials.
+
+### End-to-end validation
+
+Test one ticker such as AAPL, one analyst and one research round through Direct Gemini and then FreeLLMAPI. Compare success rate, actual serving models and fallback events (consult FreeLLMAPI logs), token usage, latency, report completeness and source provenance. Keep the same date and prompt configuration where possible. The gateway's model choices may change between calls, so results are not guaranteed reproducible.
+
+The existing dashboard shows callback-reported token usage. When FreeLLMAPI is selected, **cost shows "Not estimated"**, not a fabricated Gemini token price or $0 charge. Some provider costs, fallback events and actual serving-model IDs might only be visible in FreeLLMAPI logs. Direct Gemini retains its previous pacing and reference costs.
+
+### Offline regression checks (no Gemini credits)
+
+~~~bash
+ruff check webapp tradingagents/llm_clients/openai_client.py tradingagents/llm_clients/api_key_env.py tradingagents/llm_clients/validators.py tradingagents/llm_clients/model_catalog.py tests/test_web_gateway.py
+pytest -q tests/test_web_dashboard.py tests/test_web_usage_and_quality.py tests/test_web_evidence_risk.py tests/test_web_integrity.py tests/test_web_gateway.py
+~~~
+
+**Known limitations:** A reachable gateway is not proof of valid model output. Fallback can compromise continuity in long agent sessions, and provider usage metadata can be incomplete. Compare tool outputs and material financial claims against dated original sources. Do not use unverified recommendations for automatic trading. Do not merge/deploy until the offline checks and capability smoke test pass.
