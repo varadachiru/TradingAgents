@@ -228,3 +228,32 @@ is exceeded. Manual checks should confirm that links have real dates and the
 model's actual citations match or are flagged as untraced.
 
 All offline tests use simulated outputs and consume **no Gemini credits**.
+
+
+### Live PR #4 News test: source relevance correction
+
+The November 5, 2026 Quick News-only RELIANCE.NS smoke test completed with
+**68 passing offline tests,** 13 dated article links, 10 Gemini model calls,
+and a **$0.022574** paid-tier reference estimate. But many captured links were
+unrelated global/US stories, not direct company coverage.
+
+A PR #4 follow-up now distinguishes **ticker-scoped company-feed candidates**
+(`get_news`) from **global/macro context** (`get_global_news`). Broad
+global articles do **not** satisfy the dated company-news coverage check,
+even if they are properly dated. A ticker-feed result is still only a
+candidate: the tool origin does not verify that the article actually concerns
+the stock or supports a claim.
+
+The Source Audit orders ticker-feed candidates before global headlines and
+explicitly labels their origin. The Research Integrity panel reports separate
+counts and warns when there are **no dated ticker-feed URLs**, or when
+`get_news` was never called. The News analyst is instructed to search the
+ticker first, treat global articles as secondary macro context, and disclose
+insufficient company coverage rather than making a confident company-specific
+news claim on unrelated articles.
+
+When Technical analysis is not selected, no historical OHLCV snapshot is
+expected. The absence of such a snapshot no longer generates a warning for
+News-only runs. The latest changes add more no-network regression tests;
+rerun Ruff and pytest before merging the PR. You do not need another paid
+Gemini test just to verify the source-origin labels and warnings.
