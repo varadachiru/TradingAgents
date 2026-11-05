@@ -134,6 +134,7 @@ def test_no_market_snapshot_does_not_fabricate_comparison():
     result = check(state, evidence(), ["market"])
     assert result["market_comparison"]["has_snapshot"] is False
     assert result["market_comparison"]["review_flags"] == []
+    assert any("No dated market-tool snapshot" in w for w in result["warnings"])
 
 
 @pytest.mark.unit
@@ -155,7 +156,7 @@ def test_proper_target_and_stop_allow_computable_risk_reward():
     }
     risk = risk_for(state, rating="Overweight")
     assert risk["reward_to_risk"] == 2.5
-    result = check(state, evidence(), ["market"], rating="Overweight")
+    result = check(state, evidence(snapshot=PRICE), ["market"], rating="Overweight")
     assert result["warnings"] == []
 
 
@@ -231,7 +232,7 @@ def test_research_and_final_recommendation_difference_is_transparent_not_error()
         "trader_investment_plan": "**Action**: Hold",
         "final_trade_decision": "**Rating**: Hold\n**Price Target**: not provided",
     }
-    result = check(state, evidence(), ["market"], rating="Hold")
+    result = check(state, evidence(snapshot=PRICE), ["market"], rating="Hold")
     assert result["decision_alignment"]["research_team"] == "Buy"
     assert result["decision_alignment"]["trader_action"] == "Hold"
     assert result["decision_alignment"]["research_to_portfolio_changed"] is True
