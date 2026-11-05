@@ -135,11 +135,22 @@ def test_gateway_connection() -> dict:
         if isinstance(item, dict)
         and item.get("execution_status") == "ready"
     ]
+    ids = {
+        item["id"] for item in entries
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    quick, deep = configured_models()
+    approved_profiles_listed = quick in ids and deep in ids
     return {
         "reachable": True,
         "ready_models": len(ready),
+        "approved_models_listed": approved_profiles_listed,
         "note": (
-            "Gateway authentication works. A model-list response does not prove "
-            "tool calling or structured outputs; test those before a full analysis."
+            "Both approved model/profile identifiers are listed. "
+            "Tool calling and structured output still require a smoke test."
+            if approved_profiles_listed else
+            "Gateway authenticated, but one or both approved model/profile IDs "
+            "are missing from the available model list. Configure the chains "
+            "or choose approved models before running an analysis."
         ),
     }
