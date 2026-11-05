@@ -19,7 +19,10 @@ from urllib.parse import unquote, urlsplit
 
 from tradingagents.default_config import DEFAULT_CONFIG
 
+from .audit_report import audit_appendix
+from .evidence import EvidenceCollector
 from .quality import report_quality
+from .risk import proposal_risk
 from .usage import GeminiUsageTracker
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -113,7 +116,9 @@ def recent_reports(limit: int = 12) -> list[dict]:
             "ticker": folder.name.split("_", 1)[0],
         }
         for name, field in (("usage_summary.json", "usage"),
-                            ("quality_summary.json", "quality")):
+                            ("quality_summary.json", "quality"),
+                            ("evidence_summary.json", "evidence"),
+                            ("risk_summary.json", "risk")):
             file = folder / name
             if file.is_file() and file.stat().st_size <= 65_536:
                 # Old/partial reports remain readable.
@@ -130,13 +135,17 @@ class ResearchManager:
         self.lock = threading.Lock()
         self.current: dict | None = None
         self.usage_tracker: GeminiUsageTracker | None = None
+        self.evidence_collector: EvidenceCollector | None = None
 
     def snapshot(self) -> dict:
         with self.lock:
             current = copy.deepcopy(self.current) if self.current else {}
             tracker = self.usage_tracker
+            evidence = self.evidence_collector
         if tracker and current:
             current["usage"] = tracker.snapshot()
+        if evidence and current:
+            current["evidence"] = evidence.snapshot()
         return current
 
     def _update(self, **changes) -> None:
@@ -176,6 +185,7 @@ class ResearchManager:
             if self.current and self.current["status"] == "running":
                 raise RequestError("An analysis is already running. Let it finish before starting another.")
             self.usage_tracker = None
+            self.evidence_collector = None
             self.current = {
                 **options,
                 "status": "running",
@@ -191,6 +201,8 @@ class ResearchManager:
                 "rating": None,
                 "report_id": None,
                 "quality": None,
+                "risk": None,
+                "evidence": None,
                 "error": None,
             }
             snapshot = copy.deepcopy(self.current)
@@ -227,8 +239,10 @@ class ResearchManager:
                 if options["quick_model"] == options["deep_model"] else None
             )
             tracker = GeminiUsageTracker(default_model=default_model)
+            evidence = EvidenceCollector(options["date"])
             with self.lock:
                 self.usage_tracker = tracker
+                self.evidence_collector = evidence
             graph = TradingAgentsGraph(
                 selected_analysts=tuple(options["analysts"]),
                 debug=False,
@@ -237,7 +251,7 @@ class ResearchManager:
             )
             ticker, day = options["ticker"], options["date"]
             initial = graph.create_run_state(ticker, day)
-            args = graph.propagator.get_graph_args()
+            args = graph.propagator.get_graph_args(callbacks=[evidence])
             checkpoint_id = graph.begin_checkpoint(ticker, day)
             try:
                 if checkpoint_id is not None:
@@ -272,12 +286,23 @@ class ResearchManager:
             saved = graph.save_reports(final_state, ticker)
             usage = tracker.snapshot()
             quality = report_quality(final_state, options["analysts"])
-            (saved.parent / "usage_summary.json").write_text(
-                json.dumps(usage, indent=2), encoding="utf-8"
-            )
-            (saved.parent / "quality_summary.json").write_text(
-                json.dumps(quality, indent=2), encoding="utf-8"
-            )
+            audit = evidence.snapshot()
+            risk = proposal_risk(final_state, quality["rating"])
+            for filename, payload in (
+                ("usage_summary.json", usage),
+                ("quality_summary.json", quality),
+                ("evidence_summary.json", audit),
+                ("risk_summary.json", risk),
+            ):
+                (saved.parent / filename).write_text(
+                    json.dumps(payload, indent=2), encoding="utf-8"
+                )
+            # Preserve the original agent reports and HTML; include the
+            # deterministic appendix in Markdown without adding AI calls.
+            appendix = audit_appendix(audit, risk)
+            (saved.parent / "audit_appendix.md").write_text(appendix, encoding="utf-8")
+            with (saved.parent / "complete_report.md").open("a", encoding="utf-8") as report:
+                report.write("\n\n" + appendix)
             self._update(
                 status="completed",
                 phase="Analysis complete",
@@ -285,6 +310,8 @@ class ResearchManager:
                 rating=run_rating(final_state),
                 report_id=saved.parent.name,
                 quality=quality,
+                risk=risk,
+                evidence=audit,
             )
             self._stage("Analysis complete")
         except Exception as exc:
