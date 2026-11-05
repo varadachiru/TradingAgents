@@ -11,7 +11,7 @@ import os
 import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 DEFAULT_URL = "http://127.0.0.1:3001/v1"
 MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./:-]{0,99}$")
@@ -20,6 +20,13 @@ LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 class GatewayConfigError(ValueError):
     """A locally configured setting needs operator attention."""
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """Never forward the bearer token to an HTTP redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def gateway_url() -> str:
@@ -101,7 +108,7 @@ def test_gateway_connection() -> dict:
         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
     )
     try:
-        with urlopen(request, timeout=5) as response:
+        with build_opener(_NoRedirect).open(request, timeout=5) as response:
             if response.status != 200:
                 raise GatewayConfigError(
                     f"FreeLLMAPI returned HTTP {response.status}."
