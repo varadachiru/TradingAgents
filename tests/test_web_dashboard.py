@@ -102,3 +102,20 @@ def test_status_endpoint_does_not_reveal_api_key(monkeypatch):
         httpd.shutdown()
         httpd.server_close()
         runner.join(timeout=3)
+
+
+@pytest.mark.unit
+def test_google_rate_limiter_shared_for_model_tiers():
+    from tradingagents.llm_clients.factory import build_llm_kwargs
+    from tradingagents.llm_clients.google_client import _shared_rate_limiter
+
+    kwargs = build_llm_kwargs({
+        "llm_provider": "google",
+        "google_thinking_level": "low",
+        "google_requests_per_minute": 6,
+    })
+    assert kwargs["requests_per_minute"] == 6
+    assert _shared_rate_limiter(6) is _shared_rate_limiter(6)
+    assert _shared_rate_limiter(6) is not _shared_rate_limiter(12)
+    with pytest.raises(ValueError):
+        _shared_rate_limiter(0)
