@@ -11,7 +11,7 @@ import json
 import os
 import re
 import threading
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -105,7 +105,7 @@ def recent_reports(limit: int = 12) -> list[dict]:
             continue
         found.append({
             "id": folder.name,
-            "created_at": datetime.fromtimestamp(report.stat().st_mtime, timezone.utc).isoformat(),
+            "created_at": datetime.fromtimestamp(report.stat().st_mtime, UTC).isoformat(),
             "ticker": folder.name.split("_", 1)[0],
         })
     return sorted(found, key=lambda r: r["created_at"], reverse=True)[:limit]
@@ -144,7 +144,7 @@ class ResearchManager:
             if label != state["phase"]:
                 state["phase"] = label
                 state["events"].append({
-                    "at": datetime.now(timezone.utc).strftime("%H:%M:%S UTC"),
+                    "at": datetime.now(UTC).strftime("%H:%M:%S UTC"),
                     "message": label,
                 })
                 state["events"] = state["events"][-40:]
@@ -162,12 +162,12 @@ class ResearchManager:
                 **options,
                 "status": "running",
                 "phase": "Preparing data and AI agents",
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": datetime.now(UTC).isoformat(),
                 "finished_at": None,
                 "completed": [],
                 "sections": {},
                 "events": [{
-                    "at": datetime.now(timezone.utc).strftime("%H:%M:%S UTC"),
+                    "at": datetime.now(UTC).strftime("%H:%M:%S UTC"),
                     "message": "Analysis started",
                 }],
                 "rating": None,
@@ -244,7 +244,7 @@ class ResearchManager:
             self._update(
                 status="completed",
                 phase="Analysis complete",
-                finished_at=datetime.now(timezone.utc).isoformat(),
+                finished_at=datetime.now(UTC).isoformat(),
                 rating=run_rating(final_state),
                 report_id=saved.parent.name,
             )
@@ -257,7 +257,7 @@ class ResearchManager:
             self._update(
                 status="failed",
                 phase="Analysis failed",
-                finished_at=datetime.now(timezone.utc).isoformat(),
+                finished_at=datetime.now(UTC).isoformat(),
                 error=(type(exc).__name__ + ": " + error)[:2000],
             )
             self._stage("Analysis failed")
@@ -352,7 +352,7 @@ def main() -> None:
     args = parser.parse_args()
     server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)
     server.manager = ResearchManager()
-    print("TradingAgents dashboard: http://localhost:%d" % args.port, flush=True)
+    print(f"TradingAgents dashboard: http://localhost:{args.port}", flush=True)
     print("Keep the Codespaces forwarded port PRIVATE. Do not publish without authentication.", flush=True)
     try:
         server.serve_forever()
