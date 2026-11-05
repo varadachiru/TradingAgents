@@ -125,11 +125,74 @@ function renderProgress() {
   $("runLabel").textContent = !state.configured ? "Configure Gemini API key" :
     status === "running" ? "Analysis running..." : "Run AI analysis";
 }
+function activeReportTabs(job) {
+  if (!job.analysts || !job.analysts.length) return [["full", "Full saved report"]];
+  const analystKeys = {
+    market_report: "market",
+    news_report: "news",
+    sentiment_report: "social",
+    fundamentals_report: "fundamentals",
+  };
+  return REPORTS.filter(([key]) => !analystKeys[key] || job.analysts.includes(analystKeys[key]));
+}
+
+// Render only a small safe Markdown subset. Generated research is untrusted:
+// create text nodes and semantic elements, never put model output in innerHTML.
+function appendInlineReportText(parent, text) {
+  const pieces = text.split(/(\*\*[^*\n]+\*\*)/g);
+  for (const piece of pieces) {
+    if (!piece) continue;
+    if (piece.startsWith("**") && piece.endsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = piece.slice(2, -2);
+      parent.append(strong);
+    } else {
+      parent.append(document.createTextNode(piece));
+    }
+  }
+}
+function renderReportText(container, rawText) {
+  container.replaceChildren();
+  let paragraph = null;
+  for (const line of rawText.split(/\r?\n/)) {
+    if (!line.trim()) {
+      paragraph = null;
+      continue;
+    }
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      const title = document.createElement(heading[1].length < 3 ? "h3" : "h4");
+      appendInlineReportText(title, heading[2]);
+      container.append(title);
+      paragraph = null;
+      continue;
+    }
+    const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+    if (bullet) {
+      const item = document.createElement("p");
+      item.className = "report-bullet";
+      item.append("• ");
+      appendInlineReportText(item, bullet[1]);
+      container.append(item);
+      paragraph = null;
+      continue;
+    }
+    if (!paragraph) {
+      paragraph = document.createElement("p");
+      container.append(paragraph);
+    } else {
+      paragraph.append(document.createTextNode(" "));
+    }
+    appendInlineReportText(paragraph, line.trim());
+  }
+}
+
 function renderReports() {
   const job = state.job || {};
   const jobReport = state.selectedReport === "job";
   const sections = selectedJobSections();
-  const tabs = jobReport ? REPORTS : [["full", "Saved report"]];
+  const tabs = jobReport ? activeReportTabs(job) : [["full", "Saved report"]];
+  if (!tabs.some(([key]) => key === state.selectedTab)) state.selectedTab = tabs[0][0];
   const tabsEl = $("reportTabs");
   tabsEl.replaceChildren();
   tabs.forEach(([key, label]) => {
@@ -157,7 +220,7 @@ function renderReports() {
       ? "The completed report will be available when the run finishes."
       : "This section has not completed yet. The live research output will appear here.";
   }
-  $("reportContent").textContent = content;
+  renderReportText($("reportContent"), content);
   const id = jobReport ? job.report_id : state.selectedReport;
   const link = $("downloadReport");
   link.hidden = !id;
