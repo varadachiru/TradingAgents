@@ -251,3 +251,45 @@ def test_hold_rating_is_an_explicit_no_trade_and_not_missing_rating():
     assert result["reward_to_risk"] is None
     assert any("Hold" in w for w in result["warnings"])
     assert not any("No directional final rating" in w for w in result["warnings"])
+
+
+@pytest.mark.unit
+def test_tool_origin_scope_is_recorded_without_assuming_article_relevance():
+    company = extract_sources(
+        "### Company filing (source: Provider)\nPublished: 2026-11-05T10:00:00Z\n"
+        "Link: https://company.example.org/a",
+        "get_news", "2026-11-05",
+    )
+    macro = extract_sources(
+        "### World market story (source: Provider)\nPublished: 2026-11-05T10:00:00Z\n"
+        "Link: https://macro.example.org/b",
+        "get_global_news", "2026-11-05",
+    )
+    assert company[0]["scope"] == "company_feed"
+    assert macro[0]["scope"] == "global_context"
+
+
+@pytest.mark.unit
+def test_news_only_run_does_not_flag_expected_missing_market_snapshot():
+    collector = EvidenceCollector("2026-11-05", analysts=["news"])
+    snapshot = collector.snapshot()
+    assert snapshot["market_snapshot_expected"] is False
+    assert not any("OHLCV" in issue for issue in snapshot["warnings"])
+
+
+@pytest.mark.unit
+def test_duplicate_article_retains_ticker_feed_over_global_origin():
+    collector = EvidenceCollector("2026-11-05", analysts=["news"])
+    article = (
+        "### Company item (source: Example)\n"
+        "Published: 2026-11-05T10:00:00Z\n"
+        "Link: https://example.org/same-story"
+    )
+    collector.on_tool_start({"name": "get_global_news"}, "", run_id="global")
+    collector.on_tool_end(article, run_id="global")
+    collector.on_tool_start({"name": "get_news"}, "", run_id="company")
+    collector.on_tool_end(article, run_id="company")
+    snapshot = collector.snapshot()
+    assert snapshot["source_count"] == 1
+    assert snapshot["sources"][0]["tool"] == "get_news"
+    assert snapshot["sources"][0]["scope"] == "company_feed"
