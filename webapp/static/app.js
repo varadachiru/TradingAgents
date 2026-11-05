@@ -150,17 +150,31 @@ function renderAudit() {
   const evidencePanel = $("auditPanel");
   evidencePanel.hidden = !evidence;
   if (evidence) {
-    $("auditSourceCount").textContent = (evidence.dated_source_count || 0) + " dated / " +
-      (evidence.source_count || 0) + " tool-returned links";
+    const sourceList = evidence.sources || [];
+    const companyLinks = sourceList.filter((item) => item.tool === "get_news").length;
+    const globalLinks = sourceList.filter((item) => item.tool === "get_global_news").length;
+    $("auditSourceCount").textContent = companyLinks + " company-feed candidates · " +
+      globalLinks + " global-context links · " +
+      (evidence.dated_source_count || 0) + " dated";
     const snapshot = evidence.market_snapshot;
     $("auditMarket").textContent = snapshot
       ? "Verified tool snapshot: " + snapshot.date + " close " +
         Number(snapshot.close).toLocaleString(undefined, {minimumFractionDigits: 2}) +
         " (Yahoo Finance historical OHLCV; not exchange-confirmed)"
-      : "Verified market snapshot not captured — quoted prices are not checked.";
+      : (evidence.market_snapshot_expected === false ||
+          (state.selectedReport === "job"
+            ? !((state.job || {}).analysts || []).includes("market")
+            : !((state.historicalQuality || {}).analysts || [])
+                .some((item) => item.analyst === "market"))
+        ? "A market-price snapshot is not expected when Technical analysis is not selected."
+        : "Market-price snapshot not captured — quoted prices are not independently checked.");
     const rows = $("auditSources");
     rows.replaceChildren();
-    for (const entry of (evidence.sources || []).slice(0, 12)) {
+    // Ticker-scoped tool results first; global headlines are context, not
+    // company evidence. Neither classification verifies article relevance.
+    const sortedSources = [...sourceList].sort((a, b) =>
+      Number(b.tool === "get_news") - Number(a.tool === "get_news"));
+    for (const entry of sortedSources.slice(0, 12)) {
       // Never render model/tool HTML. Permit only external http(s) sources.
       const url = String(entry.url || "");
       let valid = false;
@@ -178,10 +192,14 @@ function renderAudit() {
       anchor.href = url;
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
+      const origin = entry.tool === "get_news"
+        ? "Ticker-scoped feed (relevance unverified)"
+        : entry.tool === "get_global_news"
+          ? "Global context · not company-specific"
+          : "Other data source";
       const subtitle = _make("small",
-        (entry.publisher || "Unspecified") + " · " +
-        (entry.published || "publication date unavailable") + " · " +
-        (entry.tool || "tool"));
+        origin + " · " + (entry.publisher || "Unspecified") + " · " +
+        (entry.published || "publication date unavailable"));
       line.append(anchor, subtitle);
       rows.append(line);
     }
@@ -192,7 +210,10 @@ function renderAudit() {
     }
     const warnings = (evidence.warnings || []).filter((warning) =>
       !technicalOnly || !warning.startsWith("No article or document URLs were captured"));
-    $("auditWarnings").textContent = warnings.join(" ");
+    const filteredWarnings = warnings.filter((warning) =>
+      evidence.market_snapshot_expected !== false ||
+      !warning.startsWith("No verified historical OHLCV"));
+    $("auditWarnings").textContent = filteredWarnings.join(" ");
   }
   const riskPanel = $("riskPanel");
   riskPanel.hidden = !risk;
@@ -242,8 +263,10 @@ function renderIntegrity() {
   metrics.replaceChildren();
   const coverage = integrity.source_coverage || {};
   for (const [label, value] of [
-    ["Dated news links", coverage.dated_news_links || 0],
-    ["News tool calls", coverage.news_tool_calls || 0],
+    ["Ticker-feed candidates", coverage.company_feed_links || 0],
+    ["Dated ticker-feed", coverage.dated_company_feed_links || 0],
+    ["Global-context links", coverage.global_context_links || 0],
+    ["Company news calls", coverage.company_news_tool_calls || 0],
     ["Financial tool calls", coverage.fundamental_tool_calls || 0],
     ["Future links excluded", coverage.future_dated_links_excluded || 0],
   ]) {
