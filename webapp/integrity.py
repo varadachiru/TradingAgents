@@ -155,7 +155,7 @@ def integrity_review(
     checked_prices = []
     if market and market.get("point_in_time"):
         close = market.get("close")
-        if isinstance(close, (int, float)) and math.isfinite(close) and close > 0:
+        if isinstance(close, int | float) and math.isfinite(close) and close > 0:
             for analyst in analysts:
                 report = str(state.get(REPORT_KEYS[analyst]) or "")
                 for candidate in _price_claims(report):
