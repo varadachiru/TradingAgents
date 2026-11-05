@@ -254,18 +254,26 @@ function renderIntegrity() {
   panel.hidden = !integrity;
   if (!integrity) return;
 
-  $("integrityStatus").textContent =
-    integrity.status === "needs_review" ? "Review needed" : "Limited checks passed";
+  const coverage = integrity.source_coverage || {};
+  const oldNewsAudit = (integrity.selected_analysts || []).includes("news") &&
+    coverage.company_feed_links === undefined;
+  $("integrityStatus").textContent = oldNewsAudit
+    ? "Older audit · company news not checked"
+    : (integrity.status === "needs_review" ? "Review needed" : "Limited checks passed");
   $("integrityStatus").className =
-    "integrity-status " + (integrity.status === "needs_review" ? "review" : "limited");
+    "integrity-status " + (oldNewsAudit || integrity.status === "needs_review" ? "review" : "limited");
 
   const metrics = $("integrityMetrics");
   metrics.replaceChildren();
-  const coverage = integrity.source_coverage || {};
+  const sourceEvidence = current
+    ? (state.job || {}).evidence : state.historicalEvidence;
+  const savedSources = (sourceEvidence || {}).sources || [];
+  const countTool = (name, datedOnly) => savedSources.filter((item) =>
+    item.tool === name && (!datedOnly || !!item.published)).length;
   for (const [label, value] of [
-    ["Ticker-feed candidates", coverage.company_feed_links || 0],
-    ["Dated ticker-feed", coverage.dated_company_feed_links || 0],
-    ["Global-context links", coverage.global_context_links || 0],
+    ["Ticker-feed candidates", coverage.company_feed_links ?? countTool("get_news", false)],
+    ["Dated ticker-feed", coverage.dated_company_feed_links ?? countTool("get_news", true)],
+    ["Global-context links", coverage.global_context_links ?? countTool("get_global_news", false)],
     ["Company news calls", coverage.company_news_tool_calls || 0],
     ["Financial tool calls", coverage.fundamental_tool_calls || 0],
     ["Future links excluded", coverage.future_dated_links_excluded || 0],
@@ -312,7 +320,11 @@ function renderIntegrity() {
   const issues = $("integrityWarnings");
   issues.replaceChildren();
   const warnings = integrity.warnings || [];
-  if (!warnings.length) {
+  if (oldNewsAudit) {
+    issues.append(_make("p",
+      "This saved run predates the company/global news distinction. Its old integrity result did not assess ticker-scoped news coverage; open a newly generated report to see that check."));
+  }
+  if (!warnings.length && !oldNewsAudit) {
     issues.append(_make("p",
       "No discrepancies detected by these limited checks. This is not an accuracy guarantee."));
   } else {
