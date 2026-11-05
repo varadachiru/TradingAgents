@@ -186,7 +186,12 @@ class EvidenceCollector(BaseCallbackHandler):
                 if item["date_status"] == "after_analysis_date":
                     self._future_sources += 1
                     continue
-                self._sources.setdefault(item["url"], item)
+                previous = self._sources.get(item["url"])
+                if previous is None or (
+                    item["scope"] == "company_feed"
+                    and previous.get("scope") != "company_feed"
+                ):
+                    self._sources[item["url"]] = item
             if snapshot and (self._snapshot is None or snapshot["date"] > self._snapshot["date"]):
                 self._snapshot = snapshot
 
