@@ -194,6 +194,9 @@ class ResearchManager:
                 "quick_think_llm": options["quick_model"],
                 "deep_think_llm": options["deep_model"],
                 "google_thinking_level": "low",
+                # One API call about every 10s across quick and deep tiers.
+                # Conservative starting point for accounts with low RPM quotas.
+                "google_requests_per_minute": 6,
                 "max_debate_rounds": options["rounds"],
                 "max_risk_discuss_rounds": options["rounds"],
                 "llm_max_retries": 2,
