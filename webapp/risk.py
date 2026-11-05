@@ -43,9 +43,10 @@ def proposal_risk(state: dict, rating: str) -> dict:
     warnings = []
     risk_pct = upside_pct = multiple = None
 
-    conflict = bool(trader_action and direction and (
-        (direction == "long" and trader_action.lower() == "sell")
-        or (direction == "short" and trader_action.lower() == "buy")
+    action = trader_action.strip().lower() if trader_action else ""
+    conflict = bool(direction and action in {"buy", "sell", "hold"} and (
+        (direction == "long" and action != "buy")
+        or (direction == "short" and action != "sell")
     ))
     if not direction:
         warnings.append("No directional final rating; risk/reward is not applicable.")
