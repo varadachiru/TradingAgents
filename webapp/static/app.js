@@ -13,6 +13,8 @@ const REPORTS = [
 ];
 const state = {
   configured: false,
+  providers: {},
+  providerSignature: "",
   job: null,
   selectedReport: "job",
   selectedTab: "final_trade_decision",
@@ -76,15 +78,28 @@ function dollar(value) {
 function renderUsage() {
   const job = state.job || {};
   const usage = job.usage || {};
+  const provider = job.provider || $("providerChoice").value;
+  const gateway = provider === "freellmapi";
+  $("usageProviderLabel").textContent = gateway ? "GATEWAY TOKEN USAGE" : "GEMINI TOKEN USAGE";
+  $("pricingLink").hidden = gateway;
   $("inputTokens").textContent = num(usage.input_tokens);
   $("outputTokens").textContent = num(usage.output_tokens);
   $("modelCalls").textContent = num(usage.calls);
-  $("estimatedCost").textContent = dollar(usage.estimated_paid_usd);
+  $("estimatedCost").textContent = gateway ? "Not estimated" :
+    (usage.estimated_paid_usd === null || usage.estimated_paid_usd === undefined
+      ? "Not estimated" : dollar(usage.estimated_paid_usd));
   $("usageStatus").textContent = job.status === "running" ? "Live estimate" :
     usage.calls ? "Latest run" : "No usage yet";
-  $("costIndicator").textContent = usage.pricing_complete && usage.calls ?
-    "Reference only" : "Partial / unverified";
+  $("costIndicator").textContent = gateway ? "Gateway billing unknown" :
+    (usage.pricing_complete && usage.calls ? "Reference only" : "Partial / unverified");
   const unreported = usage.unreported_calls || 0;
+  if (gateway) {
+    $("usageNote").textContent = usage.calls
+      ? "Gateway-reported tokens only. Actual serving models, cost and fallback events must be checked in FreeLLMAPI logs. " +
+        (unreported ? unreported + " call(s) did not report tokens." : "No price is assumed.")
+      : "Token counts will appear when FreeLLMAPI calls finish. No token-price estimate is available.";
+    return;
+  }
   $("usageNote").textContent = usage.calls
     ? "Standard paid-tier reference only; actual charges may differ. " +
       (unreported ? unreported + " model call(s) had no token usage metadata. " : "") +
@@ -334,6 +349,75 @@ function renderIntegrity() {
   }
 }
 
+
+const GEMINI_MODELS = [
+  ["gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite · Lower cost"],
+  ["gemini-3.8-flash", "Gemini 3.8 Flash · Stronger"],
+];
+function setModelOptions(id, choices) {
+  const el = $(id);
+  const previous = el.value;
+  el.replaceChildren();
+  for (const [value, label] of choices) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    el.append(opt);
+  }
+  if (choices.some(([name]) => name === previous)) el.value = previous;
+}
+function renderProviderSelection(force = false) {
+  const provider = $("providerChoice").value;
+  const settings = state.providers[provider] || {};
+  const gateway = provider === "freellmapi";
+  state.configured = !!settings.configured;
+  const signature = provider + ":" +
+    (settings.quick_model || "") + ":" + (settings.deep_model || "");
+  if (force || state.providerSignature !== signature) {
+    if (gateway) {
+      setModelOptions("quickModel", [[settings.quick_model || "auto:trading-quick",
+        settings.quick_model || "auto:trading-quick"]]);
+      setModelOptions("deepModel", [[settings.deep_model || "auto:trading-deep",
+        settings.deep_model || "auto:trading-deep"]]);
+    } else {
+      setModelOptions("quickModel", GEMINI_MODELS);
+      setModelOptions("deepModel", GEMINI_MODELS);
+    }
+    state.providerSignature = signature;
+  }
+  $("gatewayControls").hidden = !gateway;
+  $("providerModeLabel").textContent = gateway ? "FreeLLMAPI · private local" : "Google Gemini";
+  $("topbarProvider").textContent = gateway ? "FreeLLMAPI" : "Gemini API";
+  $("quotaText").textContent = gateway
+    ? "FreeLLMAPI routes calls through your approved model profiles. Tool calls and structured outputs must be tested. Free quotas can still run out; keep one analysis at a time."
+    : "Full coverage starts analysts concurrently. Gemini calls are paced at up to 6/min within this server; other requests can still exceed quota. One run at a time.";
+  $("providerLabel").textContent = state.configured
+    ? (gateway ? "FreeLLMAPI configured" : "Gemini configured")
+    : (gateway ? "FreeLLMAPI not configured" : "Gemini not configured");
+  $("providerPulse").classList.toggle("off", !state.configured);
+  renderProgress();
+}
+async function checkGatewayConnection() {
+  const button = $("checkGateway");
+  const result = $("gatewayResult");
+  button.disabled = true;
+  result.textContent = "Checking local gateway...";
+  try {
+    const response = await fetch("/api/gateway/check", {
+      headers: {"X-Requested-With": "TradingAgentsWeb"},
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Gateway connection failed.");
+    result.textContent = "Connected · " + payload.ready_models +
+      " ready catalog model(s). Tool calling and profiles still need testing.";
+  } catch (error) {
+    result.textContent = error.message || "Cannot contact local gateway.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderMarketNotice() {
   $("marketNotice").hidden = !/\.(NS|BO)$/i.test($("ticker").value.trim());
 }
@@ -399,7 +483,8 @@ function renderProgress() {
   error.hidden = status !== "failed";
   error.textContent = job.error || "Analysis failed. Inspect your Codespaces terminal.";
   $("runButton").disabled = !state.configured || status === "running";
-  $("runLabel").textContent = !state.configured ? "Configure Gemini API key" :
+  $("runLabel").textContent = !state.configured
+    ? ($("providerChoice").value === "freellmapi" ? "Configure FreeLLMAPI gateway" : "Configure Gemini API key") :
     status === "running" ? "Analysis running..." : "Run AI analysis";
   renderUsage();
 }
@@ -635,9 +720,9 @@ async function refreshStatus() {
     const res = await fetch("/api/status", {cache: "no-store"});
     if (!res.ok) throw new Error("Cannot reach research server");
     const payload = await res.json();
-    state.configured = !!payload.configured;
+    state.providers = payload.providers || {google: {configured: !!payload.configured}};
     state.job = payload.job && Object.keys(payload.job).length ? payload.job : null;
-    $("providerLabel").textContent = state.configured ? "Gemini connected" : "Gemini not configured";
+    renderProviderSelection();
     $("providerPulse").classList.toggle("off", !state.configured);
     if (state.job && state.job.status === "completed" && state.job.report_id &&
       state.viewedReportId !== state.job.report_id) {
@@ -670,6 +755,7 @@ async function startAnalysis(event) {
     quick_model: $("quickModel").value,
     deep_model: $("deepModel").value,
     rounds: Number($("rounds").value),
+    provider: $("providerChoice").value,
   };
   $("runButton").disabled = true;
   try {
@@ -704,6 +790,11 @@ document.querySelectorAll("[data-preset]").forEach((button) => {
 document.querySelectorAll('input[name="analyst"]').forEach((input) => {
   input.addEventListener("change", refreshPreset);
 });
+$("providerChoice").addEventListener("change", () => {
+  $("gatewayResult").textContent = "";
+  renderProviderSelection(true);
+});
+$("checkGateway").addEventListener("click", checkGatewayConnection);
 $("researchForm").addEventListener("submit", startAnalysis);
 $("refreshHistory").addEventListener("click", refreshHistory);
 $("ticker").addEventListener("input", renderMarketNotice);
