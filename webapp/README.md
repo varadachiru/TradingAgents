@@ -47,9 +47,10 @@ existing TradingAgents engine and saved to its normal reports directory.
 - Report viewer: AI-generated content is returned as plain text, not rendered
   as executable HTML. Other saved CLI reports are also discoverable.
 - Request limits: Full analysis starts several analysts concurrently; the
-  frontend warns about possible free-tier **429** limits. This MVP does **not**
-  yet implement a provider-wide requests-per-minute scheduler. Start with a
-  small run and check actual billing and token usage in Google AI Studio.
+  frontend warns about possible free-tier **429** limits. The web server now
+  shares a conservative **6-request/minute** in-process limiter across the
+  Gemini model tiers. API-side retries, other processes, or other projects
+  can still trigger Google quotas. Start with a small run and monitor usage.
 
 ## Important security notes
 
