@@ -115,9 +115,12 @@ def parse_verified_snapshot(text: str, as_of_date: str) -> dict | None:
 class EvidenceCollector(BaseCallbackHandler):
     """Thread-safe audit of tool results, passed through LangGraph callbacks."""
 
-    def __init__(self, as_of_date: str):
+    def __init__(self, as_of_date: str, analysts: list[str] | tuple[str, ...] | None = None):
         super().__init__()
         self.as_of_date = date.fromisoformat(as_of_date).isoformat()
+        # None means analyst coverage is unknown (e.g. direct callback use).
+        # A technical-only run collects prices/indicators, not article links.
+        self.analysts = frozenset(analysts) if analysts is not None else None
         self._lock = threading.Lock()
         self._pending: dict[str, str] = {}
         self._tool_counts: dict[str, int] = {}
@@ -166,8 +169,18 @@ class EvidenceCollector(BaseCallbackHandler):
             future_count = self._future_sources
         dated = sum(s["published"] is not None for s in sources)
         warnings = []
-        if not sources:
+        links_expected = self.analysts is None or bool(
+            self.analysts.intersection({"news", "social", "fundamentals"})
+        )
+        if not sources and links_expected:
             warnings.append("No article or document URLs were captured from tool results. AI prose is not a substitute for source citations.")
+        source_note = (
+            "Technical-only analysis uses the dated market snapshot for price provenance; "
+            "no article or document links were expected."
+            if not sources and not links_expected
+            else "No article or document URLs were returned by the selected source-oriented research tools."
+            if not sources else None
+        )
         if len(sources) != dated:
             warnings.append("Some source links have no publication date; their point-in-time availability is not established.")
         if future_count:
@@ -185,6 +198,8 @@ class EvidenceCollector(BaseCallbackHandler):
             "sources": sources[:60],
             "source_count": len(sources),
             "dated_source_count": dated,
+            "article_links_expected": links_expected,
+            "source_note": source_note,
             "future_dated_excluded": future_count,
             "market_snapshot": prices,
             "warnings": warnings,
