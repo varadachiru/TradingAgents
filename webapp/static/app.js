@@ -142,6 +142,10 @@ function renderAudit() {
   const current = state.selectedReport === "job";
   const evidence = current ? (state.job || {}).evidence : state.historicalEvidence;
   const risk = current ? (state.job || {}).risk : state.historicalRisk;
+  const selected = current
+    ? ((state.job || {}).analysts || [])
+    : ((state.historicalQuality || {}).analysts || []).map((a) => a.analyst);
+  const technicalOnly = selected.length === 1 && selected[0] === "market";
   const evidencePanel = $("auditPanel");
   evidencePanel.hidden = !evidence;
   if (evidence) {
@@ -181,14 +185,13 @@ function renderAudit() {
       rows.append(line);
     }
     if (!(evidence.sources || []).length) {
-      rows.append(_make("p", evidence.source_note || (
-        (state.selectedReport === "job" && (state.job || {}).analysts &&
-        (state.job.analysts || []).every((analyst) => analyst === "market"))
-          ? "Technical-only research relies on the historical market snapshot; no article links were expected."
-          : "No source URLs were returned by tools during this run."
-      )));
+      rows.append(_make("p", technicalOnly
+        ? "Technical-only analysis uses the dated market snapshot; article links are not expected."
+        : (evidence.source_note || "No source URLs were returned by tools during this run.")));
     }
-    $("auditWarnings").textContent = (evidence.warnings || []).join(" ");
+    const warnings = (evidence.warnings || []).filter((warning) =>
+      !technicalOnly || !warning.startsWith("No article or document URLs were captured"));
+    $("auditWarnings").textContent = warnings.join(" ");
   }
   const riskPanel = $("riskPanel");
   riskPanel.hidden = !risk;
