@@ -89,3 +89,13 @@
 .report-table th{font-weight:700;color:#8fe0cb;background:#17313c;white-space:normal}
 .report-table tbody tr:nth-child(even){background:#112034}
 .report-table tbody tr:last-child td{border-bottom:0}
+
+/* PR5: optional private AI gateway configuration. */
+.provider-field{margin:8px 0 18px}
+.gateway-connection{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:10px 0 18px;padding:13px 15px;background:#101f30;border:1px solid #38586a;border-radius:9px}
+.gateway-connection[hidden]{display:none}
+.gateway-connection>span{color:#aac5d1;line-height:1.5;font-size:11px;flex:1 1 220px}
+.gateway-connection small{color:#c1decf;font-size:11px;flex:1 1 100%;line-height:1.6}
+.gateway-check{appearance:none;cursor:pointer;border:1px solid #427c79;background:#193a42;color:#a0e8d6;border-radius:7px;padding:9px 12px;font:inherit;font-size:11px;font-weight:600}
+.gateway-check:hover{background:#21505a}
+.gateway-check:disabled{opacity:.5;cursor:default}
