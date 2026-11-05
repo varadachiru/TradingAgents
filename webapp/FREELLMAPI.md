@@ -52,7 +52,18 @@ print(test_gateway_connection())
 PY
 ```
 
-**Before a live analysis**, verify a basic completion, a model-initiated function/tool call followed by a tool-result message, and structured output parsing for **both** approved tiers. A plain text response is not enough. Only after these pass run one conservative AAPL / Technical-only / 1-round analysis, and compare it with Gemini.
+**Before a live analysis**, explicitly run this capability probe, which sends
+real inference requests to both model tiers and checks basic completion, a
+model-initiated tool call and tool-result round-trip, and structured output:
+
+```bash
+python3 -m webapp.gateway_smoke
+```
+
+The command **consumes provider API quota** and fails if the selected models
+lack these capabilities. Passing it is necessary but not sufficient for
+full-agent compatibility. Only after it passes run one conservative
+AAPL / Technical-only / 1-round analysis and compare with Gemini.
 
 The provider selection is *manual*: a failed gateway run does **not** silently reroute to Gemini. Switching back to Direct Gemini preserves the existing workflow.
 
