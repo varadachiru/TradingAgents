@@ -49,7 +49,11 @@ def proposal_risk(state: dict, rating: str) -> dict:
         or (direction == "short" and action != "sell")
     ))
     if not direction:
-        warnings.append("No directional final rating; risk/reward is not applicable.")
+        warnings.append(
+            "Final recommendation is Hold; no directional entry risk/reward applies."
+            if rating == "Hold"
+            else "No actionable directional rating; risk/reward is not applicable."
+        )
     elif conflict:
         warnings.append("Trader action conflicts with the final portfolio rating; risk/reward is withheld.")
     if entry is None:
