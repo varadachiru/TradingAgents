@@ -141,6 +141,7 @@ class EvidenceCollector(BaseCallbackHandler):
         with self._lock:
             name = self._pending.pop(str(run_id), None)
             if name:
+                self._tool_counts[name] = self._tool_counts.get(name, 0) + 1
                 outcomes = self._tool_outcomes.setdefault(name, {})
                 outcomes["error"] = outcomes.get("error", 0) + 1
 
