@@ -6,7 +6,12 @@ from types import SimpleNamespace
 import pytest
 
 from webapp.audit_report import audit_appendix
-from webapp.evidence import EvidenceCollector, extract_sources, parse_verified_snapshot, safe_source_url
+from webapp.evidence import (
+    EvidenceCollector,
+    extract_sources,
+    parse_verified_snapshot,
+    safe_source_url,
+)
 from webapp.risk import parse_price, proposal_risk
 
 
