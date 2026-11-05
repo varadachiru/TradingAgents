@@ -89,3 +89,16 @@
 .report-table th{font-weight:700;color:#8fe0cb;background:#17313c;white-space:normal}
 .report-table tbody tr:nth-child(even){background:#112034}
 .report-table tbody tr:last-child td{border-bottom:0}
+
+/* PR #5: optional, private AI gateway controls. */
+.provider-field{margin:12px 0 16px;display:block;max-width:100%}
+.provider-field select{width:100%}
+.gateway-settings{padding:14px 16px;margin:0 0 18px;background:#11283a;border:1px solid #33566d;border-radius:11px}
+.gateway-status{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.gateway-status strong{display:block;font-size:12px;color:#ddfff4}
+.gateway-status small{display:block;margin-top:6px;font-size:10px;color:#9db7c8}
+.gateway-status button{border:1px solid #499b91;background:#163f40;color:#bdfff0;border-radius:8px;padding:9px 14px;white-space:nowrap;cursor:pointer;font-weight:700;font-size:11px}
+.gateway-status button:disabled{opacity:.5;cursor:wait}
+.gateway-note{font-size:11px;color:#9ac0c8;line-height:1.55;margin:12px 0 0}
+.gateway-note + .gateway-note{color:#e0bc8d}
+@media(max-width:650px){.gateway-status{align-items:flex-start;flex-direction:column}.gateway-status button{width:100%}}
