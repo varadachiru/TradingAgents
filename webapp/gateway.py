@@ -11,7 +11,7 @@ import os
 import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 DEFAULT_URL = "http://127.0.0.1:3001/v1"
 MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./:-]{0,99}$")
