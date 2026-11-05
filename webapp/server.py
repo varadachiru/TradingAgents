@@ -133,7 +133,12 @@ class ResearchManager:
                 return
             state = self.current
             if report_key and report_text:
-                state["sections"][report_key] = report_text[:20000]
+                excerpt = report_text[:20000]
+                # Top-level LangGraph values are full snapshots, not deltas.
+                # Do not re-emit completed stages on every later graph step.
+                if state["sections"].get(report_key) == excerpt:
+                    return
+                state["sections"][report_key] = excerpt
                 if report_key not in state["completed"]:
                     state["completed"].append(report_key)
             if label != state["phase"]:
