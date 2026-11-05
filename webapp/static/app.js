@@ -21,6 +21,8 @@ const state = {
   savedText: "",
   viewedReportId: null,
   historicalQuality: null,
+  historicalEvidence: null,
+  historicalRisk: null,
 };
 
 function formatDate(value) {
@@ -129,6 +131,97 @@ function renderQuality() {
     details.append(warning);
   }
 }
+
+function _make(tag, textValue, className) {
+  const element = document.createElement(tag);
+  if (textValue !== undefined && textValue !== null) element.textContent = String(textValue);
+  if (className) element.className = className;
+  return element;
+}
+function renderAudit() {
+  const current = state.selectedReport === "job";
+  const evidence = current ? (state.job || {}).evidence : state.historicalEvidence;
+  const risk = current ? (state.job || {}).risk : state.historicalRisk;
+  const selected = current
+    ? ((state.job || {}).analysts || [])
+    : ((state.historicalQuality || {}).analysts || []).map((a) => a.analyst);
+  const technicalOnly = selected.length === 1 && selected[0] === "market";
+  const evidencePanel = $("auditPanel");
+  evidencePanel.hidden = !evidence;
+  if (evidence) {
+    $("auditSourceCount").textContent = (evidence.dated_source_count || 0) + " dated / " +
+      (evidence.source_count || 0) + " tool-returned links";
+    const snapshot = evidence.market_snapshot;
+    $("auditMarket").textContent = snapshot
+      ? "Verified tool snapshot: " + snapshot.date + " close " +
+        Number(snapshot.close).toLocaleString(undefined, {minimumFractionDigits: 2}) +
+        " (Yahoo Finance historical OHLCV; not exchange-confirmed)"
+      : "Verified market snapshot not captured — quoted prices are not checked.";
+    const rows = $("auditSources");
+    rows.replaceChildren();
+    for (const entry of (evidence.sources || []).slice(0, 12)) {
+      // Never render model/tool HTML. Permit only external http(s) sources.
+      const url = String(entry.url || "");
+      let valid = false;
+      try {
+        const parsed = new URL(url);
+        valid = ["https:", "http:"].includes(parsed.protocol) &&
+          !parsed.username && !parsed.password &&
+          !["localhost", "127.0.0.1"].includes(parsed.hostname);
+      } catch (_) {
+        valid = false;
+      }
+      if (!valid) continue;
+      const line = _make("div", null, "audit-source");
+      const anchor = _make("a", entry.title || parsedHostname(url));
+      anchor.href = url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      const subtitle = _make("small",
+        (entry.publisher || "Unspecified") + " · " +
+        (entry.published || "publication date unavailable") + " · " +
+        (entry.tool || "tool"));
+      line.append(anchor, subtitle);
+      rows.append(line);
+    }
+    if (!(evidence.sources || []).length) {
+      rows.append(_make("p", technicalOnly
+        ? "Technical-only analysis uses the dated market snapshot; article links are not expected."
+        : (evidence.source_note || "No source URLs were returned by tools during this run.")));
+    }
+    const warnings = (evidence.warnings || []).filter((warning) =>
+      !technicalOnly || !warning.startsWith("No article or document URLs were captured"));
+    $("auditWarnings").textContent = warnings.join(" ");
+  }
+  const riskPanel = $("riskPanel");
+  riskPanel.hidden = !risk;
+  if (risk) {
+    $("auditDirection").textContent = risk.direction || "No directional position";
+    const grid = $("auditRiskGrid");
+    grid.replaceChildren();
+    const data = [
+      ["Entry", risk.entry, ""],
+      ["Stop loss", risk.stop_loss, ""],
+      ["Target", risk.price_target, ""],
+      ["Risk to stop", risk.risk_pct, "%"],
+      ["Reward to target", risk.reward_pct, "%"],
+      ["Reward : risk", risk.reward_to_risk, ":1"],
+    ];
+    for (const [label, value, unit] of data) {
+      const cell = _make("div", null, "audit-risk-cell");
+      cell.append(_make("small", label));
+      cell.append(_make("strong", value === null || value === undefined ? "Not available" :
+        Number(value).toLocaleString(undefined, {maximumFractionDigits: 2}) + unit));
+      grid.append(cell);
+    }
+    $("auditRiskWarnings").textContent = (risk.warnings || []).join(" ");
+  }
+}
+function parsedHostname(url) {
+  try { return new URL(url).hostname; }
+  catch (_) { return "Source"; }
+}
+
 function renderMarketNotice() {
   $("marketNotice").hidden = !/\.(NS|BO)$/i.test($("ticker").value.trim());
 }
@@ -263,6 +356,7 @@ function renderReportText(container, rawText) {
 function renderReports() {
   const job = state.job || {};
   renderQuality();
+  renderAudit();
   const jobReport = state.selectedReport === "job";
   const sections = selectedJobSections();
   const tabs = jobReport ? activeReportTabs(job) : [["full", "Saved report"]];
@@ -349,7 +443,10 @@ async function openReport(id, isCurrent) {
       state.selectedReport = id;
       state.selectedTab = "full";
       state.historicalText = text;
-      state.historicalQuality = (state.archive.find((item) => item.id === id) || {}).quality || null;
+      const item = state.archive.find((item) => item.id === id) || {};
+      state.historicalQuality = item.quality || null;
+      state.historicalEvidence = item.evidence || null;
+      state.historicalRisk = item.risk || null;
       renderReports();
     }
   } catch (err) {
@@ -421,6 +518,8 @@ async function startAnalysis(event) {
     state.savedText = "";
     state.viewedReportId = null;
     state.historicalQuality = null;
+    state.historicalEvidence = null;
+    state.historicalRisk = null;
     renderProgress();
     renderReports();
     $("progress").scrollIntoView({behavior: "smooth", block: "nearest"});

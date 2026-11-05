@@ -63,7 +63,7 @@ def create_portfolio_manager(llm):
 
 ---
 
-Ground every conclusion in specific evidence from the analysts. The risk debate always contains conflicting stances; deciding which is stronger is the job, so conflict alone is not a reason to Hold. Commit to the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not force a direction to appear decisive. Weigh the analysts on their merits, independent of speaking order.
+Ground every conclusion in specific evidence from the analysts. Do not invent filing URLs, dates, market levels, or price targets. If the market report and trader plan contain defensible levels, provide an explicit numerical target and justify the scenario and time horizon in your investment thesis; otherwise leave the optional price_target field null and explain what evidence is missing. Check whether the trader's entry and stop-loss align with your final directional view. Avoid claiming a positive reward-to-risk ratio when no explicit target exists. The risk debate always contains conflicting stances; deciding which is stronger is the job, so conflict alone is not a reason to Hold. Commit to the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not force a direction to appear decisive. Weigh the analysts on their merits, independent of speaking order.
 
 ## Output
 

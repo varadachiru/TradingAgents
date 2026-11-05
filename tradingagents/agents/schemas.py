@@ -252,7 +252,10 @@ class PortfolioDecision(BaseModel):
     )
     price_target: float | None = Field(
         default=None,
-        description="Optional target price in the instrument's quote currency.",
+        description=("Optional target price in the instrument's quote currency, "
+                     "only when a defensible scenario and evidence-derived price level "
+                     "are present. Omit when unavailable; never invent a number "
+                     "just to populate the field."),
     )
     time_horizon: str | None = Field(
         default=None,

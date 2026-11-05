@@ -108,3 +108,61 @@ The offline tests use fake LangGraph results and do not call Gemini:
 
     ruff check webapp tests/test_web_dashboard.py tests/test_web_usage_and_quality.py
     pytest -q tests/test_web_dashboard.py tests/test_web_usage_and_quality.py
+
+
+## Evidence and trade-risk audit (PR #3)
+
+The report page now includes an **Evidence/Point-in-Time** panel. It captures
+source URLs, publisher names, and original publication dates from *actual data
+tool responses*; it does **not** treat URLs appearing only in LLM prose as
+verified citations. Tool callbacks are wired through LangGraph and the source
+list is saved as evidence_summary.json alongside the existing usage and quality
+files. Links with publication dates after the chosen analysis date are excluded
+and counted. Undated sources are labeled as undated rather than being assigned
+the current date. Yahoo Finance news tool responses now include publication
+timestamps when Yahoo supplies them.
+
+Where the technical analyst actually calls get_verified_market_snapshot, the
+panel reads the historical row's as-of date and closing price directly from that
+tool response. **No additional market-data fetch is required for the audit.**
+If that tool was not called or returns no usable data, the UI explicitly says
+the price snapshot was not captured. A vendor tool snapshot verifies its own
+reported data row, *not* all financial claims or the exchange's authoritative
+record.
+
+The **Risk and Reward** panel computes basic percentage risk to a Trader stop
+and potential percentage reward and reward-to-risk multiple from explicitly
+provided Trader entry/stop and Portfolio Manager price target. If the target,
+entry or stop is absent, inconsistent, nonnumeric or on the wrong side, those
+figures remain blank and the dashboard warns why. The app never fills missing
+targets using unsupported estimates.
+
+On completed reports the dashboard writes:
+- evidence_summary.json – tool-origin links, dates and price snapshot
+- risk_summary.json – calculated entry/stop/target arithmetic
+- audit_appendix.md – human-readable audit summary
+- complete_report.md – original TradingAgents report with audit appendix
+  appended to the end
+
+The existing complete_report.html preserves the underlying agent-generated
+HTML and does not yet include the appended audit. Use the web dashboard or
+complete_report.md to see the audit together with the report. Older PR #1/#2
+reports remain readable without these new audit files.
+
+The audit is a **traceability aid, not independent verification or an
+investment recommendation**. A source being listed does not mean a specific
+sentence in an AI report is supported by it. Read the source documents, confirm
+their publication dates and historical availability, and verify the reported
+financial figures before acting.
+
+To test this PR offline (no Gemini credit used):
+
+    ruff check webapp tests/test_web_dashboard.py tests/test_web_usage_and_quality.py tests/test_web_evidence_risk.py tradingagents/agents/analysts/news_analyst.py tradingagents/agents/analysts/fundamentals_analyst.py tradingagents/agents/managers/portfolio_manager.py tradingagents/agents/schemas.py tradingagents/dataflows/vendors/yahoo/news.py
+    pytest -q tests/test_web_dashboard.py tests/test_web_usage_and_quality.py tests/test_web_evidence_risk.py
+
+Use the same Private Codespaces port 8765. An existing saved RELIANCE report
+can be opened safely but will not retroactively have captured source URLs.
+A **new** run is needed to test collection of tool outputs.
+
+Trade-risk calculations do not include broker execution, live prices,
+transaction costs, slippage, gaps or tax.

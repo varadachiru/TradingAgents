@@ -76,6 +76,10 @@ def _format_articles(articles: list[dict]) -> str:
     out = ""
     for data in articles:
         out += f"### {data['title']} (source: {data['publisher']})\n"
+        # The publication date is essential for as-of verification and citations.
+        # Do not silently assign today to undated items.
+        published = data.get("pub_date")
+        out += f"Published: {published.astimezone(UTC).isoformat() if published and published.tzinfo else published.isoformat() if published else 'unavailable'}\n"
         if data["summary"]:
             out += f"{data['summary']}\n"
         if data["link"]:

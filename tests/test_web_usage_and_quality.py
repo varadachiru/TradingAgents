@@ -122,7 +122,7 @@ def test_full_reliance_execution_saves_usage_and_quality_without_api_calls(
             captured["analysts"] = selected_analysts
             captured["config"] = config
             captured["callbacks"] = callbacks
-            self.propagator = SimpleNamespace(get_graph_args=lambda: {"config": {}})
+            self.propagator = SimpleNamespace(get_graph_args=lambda callbacks=None: {"config": {"callbacks": callbacks or []}})
             self._resuming = False
 
         def create_run_state(self, ticker, date):
@@ -135,6 +135,14 @@ def test_full_reliance_execution_saves_usage_and_quality_without_api_calls(
             return state
 
         def stream_run(self, state, **kwargs):
+            # Simulate nested analyst tool callbacks, no actual network requests.
+            collector = kwargs["config"]["callbacks"][0]
+            collector.on_tool_start({"name": "get_news"}, "", run_id="mock-news")
+            collector.on_tool_end(
+                "### Test article (source: Example)\nPublished: 2026-11-03T08:00:00Z\n"
+                "Link: https://example.com/test-story",
+                run_id="mock-news",
+            )
             # Mimic the four analyst completions followed by decision.
             for key in ("market_report", "sentiment_report", "news_report", "fundamentals_report"):
                 yield [], {key: answer[key]}
@@ -179,6 +187,11 @@ def test_full_reliance_execution_saves_usage_and_quality_without_api_calls(
     assert captured["cleared"] is True
     assert captured["ended"] is True
     assert (report_dir / "usage_summary.json").is_file()
+    assert (report_dir / "evidence_summary.json").is_file()
+    assert json.loads((report_dir / "evidence_summary.json").read_text())["source_count"] == 1
+    assert (report_dir / "risk_summary.json").is_file()
+    assert (report_dir / "audit_appendix.md").is_file()
+    assert "Evidence and Trade-Risk Audit" in (report_dir / "complete_report.md").read_text()
     assert json.loads((report_dir / "quality_summary.json").read_text())["sections_requested"] == 4
 
     monkeypatch.setattr(server, "results_root", lambda: report_dir.parent)
