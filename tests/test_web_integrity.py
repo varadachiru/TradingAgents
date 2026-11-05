@@ -212,3 +212,28 @@ def test_integrity_appendix_adds_diagnostics_without_breaking_existing_audit():
     assert "Review price mention" in markdown
     assert "no explicit numeric target" not in markdown
     assert "Evidence and Trade-Risk Audit" in markdown
+
+
+
+@pytest.mark.unit
+def test_news_analyst_current_price_can_be_compared_to_market_tool_snapshot():
+    state = {"news_report": "Latest share price at ₹1,360.00 according to this report."}
+    result = check(state, evidence(snapshot=PRICE), ["news"])
+    review = result["market_comparison"]["review_flags"]
+    assert len(review) == 1
+    assert review[0]["analyst"] == "news"
+
+
+@pytest.mark.unit
+def test_research_and_final_recommendation_difference_is_transparent_not_error():
+    state = {
+        "investment_plan": "**Recommendation**: Buy",
+        "trader_investment_plan": "**Action**: Hold",
+        "final_trade_decision": "**Rating**: Hold\n**Price Target**: not provided",
+    }
+    result = check(state, evidence(), ["market"], rating="Hold")
+    assert result["decision_alignment"]["research_team"] == "Buy"
+    assert result["decision_alignment"]["trader_action"] == "Hold"
+    assert result["decision_alignment"]["research_to_portfolio_changed"] is True
+    assert result["status"] == "limited_checks_passed"
+    assert not result["warnings"]
