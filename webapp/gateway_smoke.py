@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from tradingagents.llm_clients.factory import create_llm_client
 from webapp.gateway import (
-    GatewayConfigError,
     configured_models,
     gateway_is_configured,
     gateway_url,
