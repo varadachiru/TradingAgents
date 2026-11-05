@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import json
 import threading
-from http.server import ThreadingHTTPServer
-from urllib.request import urlopen
+from types import SimpleNamespace
 
 import pytest
 
@@ -87,21 +86,23 @@ def test_report_history_cannot_escape_reports_folder(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_status_endpoint_does_not_reveal_api_key(monkeypatch):
+    # Call the request handler directly. Unit tests must not open TCP sockets:
+    # the repository's network isolation blocks localhost connections in CI.
     monkeypatch.setenv("GOOGLE_API_KEY", "testing-secret-never-return")
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.DashboardHandler)
-    httpd.manager = server.ResearchManager()
-    runner = threading.Thread(target=httpd.serve_forever, daemon=True)
-    runner.start()
-    try:
-        with urlopen("http://127.0.0.1:%s/api/status" % httpd.server_port, timeout=3) as result:
-            body = result.read().decode("utf-8")
-            data = json.loads(body)
-        assert data["configured"] is True
-        assert "testing-secret-never-return" not in body
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-        runner.join(timeout=3)
+    handler = object.__new__(server.DashboardHandler)
+    handler.path = "/api/status"
+    handler.server = SimpleNamespace(manager=server.ResearchManager())
+    responses = []
+    handler._json = lambda status, payload: responses.append((status, payload))
+
+    handler.do_GET()
+
+    assert len(responses) == 1
+    status, payload = responses[0]
+    assert status == 200
+    assert payload["configured"] is True
+    assert payload["job"] == {}
+    assert "testing-secret-never-return" not in json.dumps(payload)
 
 
 @pytest.mark.unit
