@@ -18,6 +18,9 @@ from urllib.parse import unquote, urlsplit
 
 from tradingagents.default_config import DEFAULT_CONFIG
 
+from .quality import report_quality
+from .usage import GeminiUsageTracker
+
 STATIC_DIR = Path(__file__).parent / "static"
 ANALYSTS = ("market", "social", "news", "fundamentals")
 MODELS = ("gemini-3.1-flash-lite", "gemini-3.8-flash")
@@ -103,11 +106,20 @@ def recent_reports(limit: int = 12) -> list[dict]:
         report = folder / "complete_report.md"
         if not report.is_file():
             continue
-        found.append({
+        item = {
             "id": folder.name,
             "created_at": datetime.fromtimestamp(report.stat().st_mtime, UTC).isoformat(),
             "ticker": folder.name.split("_", 1)[0],
-        })
+        }
+        for name, field in (("usage_summary.json", "usage"),
+                            ("quality_summary.json", "quality")):
+            file = folder / name
+            if file.is_file() and file.stat().st_size <= 65_536:
+                try:
+                    item[field] = json.loads(file.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    pass  # Old/partial reports remain readable.
+        found.append(item)
     return sorted(found, key=lambda r: r["created_at"], reverse=True)[:limit]
 
 
@@ -117,10 +129,15 @@ class ResearchManager:
     def __init__(self):
         self.lock = threading.Lock()
         self.current: dict | None = None
+        self.usage_tracker: GeminiUsageTracker | None = None
 
     def snapshot(self) -> dict:
         with self.lock:
-            return copy.deepcopy(self.current) if self.current else {}
+            current = copy.deepcopy(self.current) if self.current else {}
+            tracker = self.usage_tracker
+        if tracker and current:
+            current["usage"] = tracker.snapshot()
+        return current
 
     def _update(self, **changes) -> None:
         with self.lock:
@@ -158,6 +175,7 @@ class ResearchManager:
         with self.lock:
             if self.current and self.current["status"] == "running":
                 raise RequestError("An analysis is already running. Let it finish before starting another.")
+            self.usage_tracker = None
             self.current = {
                 **options,
                 "status": "running",
@@ -172,6 +190,7 @@ class ResearchManager:
                 }],
                 "rating": None,
                 "report_id": None,
+                "quality": None,
                 "error": None,
             }
             snapshot = copy.deepcopy(self.current)
@@ -203,8 +222,18 @@ class ResearchManager:
                 "output_language": "English",
                 "checkpoint_enabled": True,
             })
+            default_model = (
+                options["quick_model"]
+                if options["quick_model"] == options["deep_model"] else None
+            )
+            tracker = GeminiUsageTracker(default_model=default_model)
+            with self.lock:
+                self.usage_tracker = tracker
             graph = TradingAgentsGraph(
-                selected_analysts=tuple(options["analysts"]), debug=False, config=config
+                selected_analysts=tuple(options["analysts"]),
+                debug=False,
+                config=config,
+                callbacks=[tracker],
             )
             ticker, day = options["ticker"], options["date"]
             initial = graph.create_run_state(ticker, day)
@@ -241,12 +270,21 @@ class ResearchManager:
                 graph.end_checkpoint()
 
             saved = graph.save_reports(final_state, ticker)
+            usage = tracker.snapshot()
+            quality = report_quality(final_state, options["analysts"])
+            (saved.parent / "usage_summary.json").write_text(
+                json.dumps(usage, indent=2), encoding="utf-8"
+            )
+            (saved.parent / "quality_summary.json").write_text(
+                json.dumps(quality, indent=2), encoding="utf-8"
+            )
             self._update(
                 status="completed",
                 phase="Analysis complete",
                 finished_at=datetime.now(UTC).isoformat(),
                 rating=run_rating(final_state),
                 report_id=saved.parent.name,
+                quality=quality,
             )
             self._stage("Analysis complete")
         except Exception as exc:
